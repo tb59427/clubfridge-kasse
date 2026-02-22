@@ -1,0 +1,33 @@
+[Unit]
+Description=Clubfridge Kasse
+Documentation=https://github.com/clubfridge-dev/clubfridgeV2
+After=network-online.target graphical-session.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+# DISPLAY und XAUTHORITY für Kivy / SDL2 unter X11
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/%i/.Xauthority
+# Kivy soll keine eigene .kivy-Konfiguration aus dem Home lesen
+Environment=KIVY_NO_ENV_CONFIG=1
+# SDL2 auf dem Framebuffer (ohne X11): KIVY_WINDOW=egl_rpi
+# Environment=KIVY_WINDOW=egl_rpi
+
+WorkingDirectory=/opt/clubfridge/kasse
+ExecStart=/opt/clubfridge/kasse/.venv/bin/python main.py
+
+Restart=always
+RestartSec=5
+# Prozess darf max. 3x innerhalb von 60s neu starten
+# danach wartet systemd länger (StartLimitBurst=3)
+StartLimitBurst=3
+StartLimitIntervalSec=60
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=clubfridge-kasse
+
+[Install]
+WantedBy=graphical-session.target
