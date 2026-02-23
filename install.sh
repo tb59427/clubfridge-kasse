@@ -185,7 +185,7 @@ StandardError=journal
 SyslogIdentifier=clubfridge-kasse
 
 [Install]
-WantedBy=graphical-session.target
+WantedBy=graphical.target
 EOF
 fi
 
@@ -193,6 +193,26 @@ systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}@${SERVICE_USER}"
 
 info "Service aktiviert: ${SERVICE_NAME}@${SERVICE_USER}"
+
+# ── Automatischer Update-Timer einrichten ─────────────────────────────────────
+
+step "Automatischer Update-Timer wird eingerichtet…"
+
+UPDATE_SERVICE="/etc/systemd/system/clubfridge-update@.service"
+UPDATE_TIMER="/etc/systemd/system/clubfridge-update@.timer"
+
+# Update-Script ausführbar machen
+chmod +x "${INSTALL_DIR}/deploy/clubfridge-update.sh"
+
+# Service und Timer aus Repo kopieren
+cp "${INSTALL_DIR}/deploy/clubfridge-update@.service" "${UPDATE_SERVICE}"
+cp "${INSTALL_DIR}/deploy/clubfridge-update@.timer"   "${UPDATE_TIMER}"
+
+systemctl daemon-reload
+systemctl enable "clubfridge-update@${SERVICE_USER}.timer"
+systemctl start  "clubfridge-update@${SERVICE_USER}.timer"
+
+info "Update-Timer aktiv (täglich 03:00 Uhr): clubfridge-update@${SERVICE_USER}.timer"
 
 # ── Desktop-Autostart (optional, falls kein Display-Manager vorhanden) ────────
 
@@ -215,6 +235,56 @@ EOF
     info "Desktop-Autostart eingerichtet"
 fi
 
+# ── Hardware-Erkennung (informativ) ──────────────────────────────────────────
+
+step "USB-HID-Eingabegeräte werden erkannt…"
+
+BY_ID="/dev/input/by-id"
+RFID_FOUND=""
+BARCODE_FOUND=""
+
+if [[ -d "${BY_ID}" ]]; then
+    # Alle Haupt-Tastatur-Interfaces (event-kbd, keine Sub-Interfaces)
+    while IFS= read -r -d '' dev; do
+        name="$(basename "${dev}")"
+        name_lower="${name,,}"  # zu Kleinbuchstaben
+
+        # RFID-Leser anhand Name-Pattern erkennen
+        if [[ -z "${RFID_FOUND}" ]] && echo "${name_lower}" | grep -qE 'rfid|nfc|reader|sycreader|acr|mifare|id_ic'; then
+            RFID_FOUND="${dev}"
+        # Barcode-Scanner: explizit benannte oder erster verbleibender Eintrag
+        elif [[ -z "${BARCODE_FOUND}" ]]; then
+            if echo "${name_lower}" | grep -qE 'barcode|scanner|honeywell|zebra|symbol|datalogic'; then
+                BARCODE_FOUND="${dev}"
+            elif [[ -z "${BARCODE_FOUND}" ]]; then
+                BARCODE_FOUND="${dev}"
+            fi
+        fi
+    done < <(find "${BY_ID}" -name "usb-*-event-kbd" -print0 | sort -z)
+
+    if [[ -n "${RFID_FOUND}" ]]; then
+        info "RFID-Leser erkannt  : ${RFID_FOUND}"
+    else
+        warn "Kein RFID-Leser erkannt – ggf. noch nicht angeschlossen."
+        warn "RFID_DEVICE manuell in ${INSTALL_DIR}/.env setzen."
+    fi
+
+    if [[ -n "${BARCODE_FOUND}" ]]; then
+        info "Barcode-Scanner erkannt: ${BARCODE_FOUND}"
+    else
+        warn "Kein Barcode-Scanner erkannt – ggf. noch nicht angeschlossen."
+        warn "BARCODE_DEVICE manuell in ${INSTALL_DIR}/.env setzen."
+    fi
+else
+    warn "/dev/input/by-id nicht vorhanden – Hardware-Erkennung nicht möglich."
+    warn "Geräte bitte manuell in ${INSTALL_DIR}/.env eintragen."
+fi
+
+echo ""
+warn "Die Gerätepfade werden automatisch beim Einrichtungs-Assistenten"
+warn "erkannt und in die .env geschrieben. Falls die Geräte jetzt noch"
+warn "nicht angeschlossen sind, bitte VOR dem ersten Start anstecken."
+
 # ── Abschluss ─────────────────────────────────────────────────────────────────
 
 echo ""
@@ -222,14 +292,17 @@ echo -e "${GREEN}${BOLD}  Installation abgeschlossen!${NC}"
 echo ""
 echo "  Nächste Schritte:"
 echo ""
-echo "  1. Service starten:"
+echo "  1. RFID-Leser und Barcode-Scanner per USB anschließen (falls noch nicht geschehen)"
+echo ""
+echo "  2. Service starten:"
 echo "     sudo systemctl start ${SERVICE_NAME}@${SERVICE_USER}"
 echo ""
-echo "  2. Der Einrichtungs-Assistent erscheint auf dem Bildschirm."
+echo "  3. Der Einrichtungs-Assistent erscheint auf dem Bildschirm."
 echo "     Gib Server-URL, Tenant-ID und Setup-Code aus dem Admin-UI ein."
 echo "     Alternativ: config.json per USB-Stick einlesen."
 echo ""
-echo "  3. Nach der Einrichtung startet die Kasse automatisch."
+echo "  4. Nach der Einrichtung startet die Kasse automatisch."
+echo "     Gerätepfade werden automatisch erkannt und in .env gespeichert."
 echo ""
 echo "  Logs verfolgen:"
 echo "     sudo journalctl -fu ${SERVICE_NAME}@${SERVICE_USER}"

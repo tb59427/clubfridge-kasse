@@ -11,6 +11,12 @@ Entwicklungsmodus:
 """
 import logging
 
+try:
+    from importlib.metadata import version as _pkg_version
+    _VERSION = _pkg_version("clubfridge-kasse")
+except Exception:
+    _VERSION = "0.1.0"
+
 from kivy.app import App
 from kivy.clock import Clock
 from kivy.lang import Builder
@@ -54,7 +60,7 @@ Builder.load_string("""
                 id: status_label
                 text: root.status_text
                 color: root.status_color
-                font_size: 28
+                font_size: 18
                 size_hint_x: None
                 width: 150
                 halign: 'right'
@@ -148,7 +154,7 @@ Builder.load_string("""
         Label:
             id: prompt_label
             text: root.prompt_text
-            font_size: 44
+            font_size: 32
             color: 0.9, 0.9, 0.9, 1
             halign: 'center'
             text_size: self.width, None
@@ -157,14 +163,24 @@ Builder.load_string("""
         Label:
             id: error_label
             text: root.error_text
-            font_size: 28
+            font_size: 22
             color: 1.0, 0.35, 0.2, 1
             halign: 'center'
             text_size: self.width, None
             opacity: 1 if root.error_text else 0
 
         Widget:
-            size_hint_y: 0.15
+            size_hint_y: 0.10
+
+        # ── Versionszeile ──────────────────────────────────────────────
+        Label:
+            text: root.version_text
+            font_size: 13
+            color: 1, 1, 1, 0.20
+            halign: 'center'
+            text_size: self.width, None
+            size_hint_y: None
+            height: 22
 """)
 
 
@@ -173,6 +189,7 @@ class IdleScreen(Screen):
     status_color = [1.0, 0.42, 0.208, 1]
     prompt_text = StringProperty("Bitte RFID-Karte scannen")
     error_text = StringProperty("")
+    version_text = StringProperty(f"v{_VERSION}  ·  © 2026 Torsten Beyer")
 
     def on_enter(self) -> None:
         """Wird aufgerufen, wenn der Screen aktiv wird."""

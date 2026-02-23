@@ -1,0 +1,14 @@
+[Unit]
+Description=Clubfridge Kasse – Software-Update (%i)
+Documentation=https://github.com/tb59427/clubfridge-kasse
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/opt/clubfridge/kasse/deploy/clubfridge-update.sh %i
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=clubfridge-update

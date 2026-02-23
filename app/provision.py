@@ -75,13 +75,78 @@ def provision_with_token(api_url: str, tenant_slug: str, token: str) -> dict:
         return r.json()
 
 
+def detect_input_devices() -> tuple[str, str]:
+    """
+    Erkennt RFID-Leser und Barcode-Scanner anhand von /dev/input/by-id/.
+
+    Verwendet stabile by-id-Symlinks (ändern sich nicht beim Neustart).
+    Identifiziert RFID-Leser anhand von Name-Patterns; der erste verbleibende
+    USB-HID-Keyboard-Eintrag wird als Barcode-Scanner angenommen.
+
+    Gibt (rfid_device, barcode_device) zurück – fällt auf event0/event1 zurück
+    wenn die Erkennung fehlschlägt.
+    """
+    DEFAULT_RFID = "/dev/input/event0"
+    DEFAULT_BARCODE = "/dev/input/event1"
+
+    by_id = Path("/dev/input/by-id")
+    if not by_id.exists():
+        log.warning("Geräteerkennung: /dev/input/by-id nicht vorhanden – verwende Defaults")
+        return DEFAULT_RFID, DEFAULT_BARCODE
+
+    # Nur Haupt-Tastaturinterfaces (event-kbd), keine Sub-Interfaces (event-if01 etc.)
+    kbd_devices = sorted(by_id.glob("usb-*-event-kbd"))
+    if not kbd_devices:
+        log.warning("Geräteerkennung: Keine USB-HID-Tastaturen gefunden – verwende Defaults")
+        return DEFAULT_RFID, DEFAULT_BARCODE
+
+    # RFID-Leser anhand bekannter Name-Patterns erkennen
+    RFID_PATTERNS = ("rfid", "nfc", "reader", "sycreader", "acr", "mifare", "id_ic")
+
+    rfid_path: Path | None = None
+    other_paths: list[Path] = []
+
+    for dev in kbd_devices:
+        if rfid_path is None and any(p in dev.name.lower() for p in RFID_PATTERNS):
+            rfid_path = dev
+            log.info("Geräteerkennung: RFID-Leser erkannt: %s", dev.name)
+        else:
+            other_paths.append(dev)
+
+    # Barcode-Scanner: bevorzuge explizit benannte Scanner, fallback auf erstes verbleibendes Gerät
+    BARCODE_PATTERNS = ("barcode", "scanner", "honeywell", "zebra", "symbol", "datalogic", "point_of_sale")
+    barcode_path: Path | None = None
+    for dev in other_paths:
+        if any(p in dev.name.lower() for p in BARCODE_PATTERNS):
+            barcode_path = dev
+            break
+    if barcode_path is None and other_paths:
+        barcode_path = other_paths[0]
+
+    if barcode_path:
+        log.info("Geräteerkennung: Barcode-Scanner zugewiesen: %s", barcode_path.name)
+
+    if rfid_path is None:
+        log.warning("Geräteerkennung: Kein RFID-Leser erkannt – verwende Default %s", DEFAULT_RFID)
+    if barcode_path is None:
+        log.warning("Geräteerkennung: Kein Barcode-Scanner erkannt – verwende Default %s", DEFAULT_BARCODE)
+
+    return (
+        str(rfid_path) if rfid_path else DEFAULT_RFID,
+        str(barcode_path) if barcode_path else DEFAULT_BARCODE,
+    )
+
+
 def write_env(api_url: str, tenant_slug: str, api_key: str) -> Path:
     """
     Schreibt die .env-Datei mit der Kassen-Konfiguration.
 
     Erstellt das Verzeichnis falls nötig und gibt den Pfad zurück.
+    Gerätepfade werden automatisch erkannt (RFID, Barcode).
     """
     import datetime
+
+    rfid_device, barcode_device = detect_input_devices()
 
     env_path = get_env_file()
     env_path.parent.mkdir(parents=True, exist_ok=True)
@@ -93,9 +158,9 @@ def write_env(api_url: str, tenant_slug: str, api_key: str) -> Path:
         f"SERVER_URL={api_url.rstrip('/')}\n"
         f"TENANT_SLUG={tenant_slug}\n"
         f"API_KEY={api_key}\n\n"
-        "# Hardware (nach Bedarf anpassen)\n"
-        "RFID_DEVICE=/dev/input/event0\n"
-        "BARCODE_DEVICE=/dev/input/event1\n"
+        "# Hardware – automatisch erkannte Gerätepfade (bei Bedarf anpassen)\n"
+        f"RFID_DEVICE={rfid_device}\n"
+        f"BARCODE_DEVICE={barcode_device}\n"
         "HAS_RELAY=false\n"
         "RELAY_GPIO_PIN=18\n"
         "RELAY_OPEN_DURATION_MS=3000\n\n"

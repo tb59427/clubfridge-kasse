@@ -30,4 +30,4 @@ StandardError=journal
 SyslogIdentifier=clubfridge-kasse
 
 [Install]
-WantedBy=graphical-session.target
+WantedBy=graphical.target

@@ -17,6 +17,12 @@ import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+try:
+    from importlib.metadata import version as _pkg_version
+    _VERSION = _pkg_version("clubfridge-kasse")
+except Exception:
+    _VERSION = "0.1.0"
+
 from kivy.app import App
 from kivy.clock import Clock
 from kivy.lang import Builder
@@ -49,7 +55,7 @@ Builder.load_string("""
 
     Label:
         text: root.product_name
-        font_size: 32
+        font_size: 22
         color: 0.95, 0.95, 0.95, 1
         halign: 'left'
         text_size: self.width, None
@@ -57,7 +63,7 @@ Builder.load_string("""
 
     Label:
         text: str(root.quantity) + ' ×'
-        font_size: 32
+        font_size: 22
         color: 0.6, 0.6, 0.6, 1
         size_hint_x: 0.15
         halign: 'center'
@@ -65,7 +71,7 @@ Builder.load_string("""
 
     Label:
         text: '{:.2f} €'.format(root.unit_price)
-        font_size: 32
+        font_size: 22
         color: 0.6, 0.6, 0.6, 1
         size_hint_x: 0.17
         halign: 'right'
@@ -73,7 +79,7 @@ Builder.load_string("""
 
     Label:
         text: '{:.2f} €'.format(root.quantity * root.unit_price)
-        font_size: 32
+        font_size: 22
         bold: True
         color: 0.95, 0.95, 0.95, 1
         size_hint_x: 0.18
@@ -101,7 +107,7 @@ Builder.load_string("""
 
             Label:
                 text: 'Hallo, ' + root.member_name + '!'
-                font_size: 48
+                font_size: 32
                 bold: True
                 color: 1.0, 0.42, 0.208, 1
                 halign: 'left'
@@ -111,7 +117,7 @@ Builder.load_string("""
                 id: status_label
                 text: root.status_text
                 color: root.status_color
-                font_size: 28
+                font_size: 18
                 size_hint_x: None
                 width: 150
                 halign: 'right'
@@ -133,12 +139,12 @@ Builder.load_string("""
         Label:
             id: empty_label
             text: 'Barcode scannen, um Produkt hinzuzufügen …'
-            font_size: 48
+            font_size: 32
             color: 0.5, 0.5, 0.5, 1
             halign: 'center'
+            size_hint_y: None
+            height: 160 if root.cart_empty else 0
             opacity: 1 if root.cart_empty else 0
-
-        Widget:
 
         # ── Gesamtbetrag ───────────────────────────────────────────────
         BoxLayout:
@@ -148,14 +154,14 @@ Builder.load_string("""
 
             Label:
                 text: 'Gesamt'
-                font_size: 48
+                font_size: 32
                 color: 0.7, 0.7, 0.7, 1
                 halign: 'left'
                 text_size: self.width, None
 
             Label:
                 text: '{:.2f} €'.format(root.total_price)
-                font_size: 48
+                font_size: 32
                 bold: True
                 color: 1.0, 0.42, 0.208, 1
                 halign: 'right'
@@ -169,17 +175,30 @@ Builder.load_string("""
 
             Button:
                 text: 'Abbrechen'
-                font_size: 48
+                font_size: 36
                 background_color: 0.85, 0.22, 0.22, 1
                 on_release: root.cancel()
 
             Button:
-                text: 'Kaufen  ✓'
-                font_size: 48
+                text: 'Kaufen'
+                font_size: 36
                 bold: True
-                background_color: 1.0, 0.42, 0.208, 1
+                color: 1, 1, 1, 1
+                background_normal: ''
+                background_down: ''
+                background_color: (0.06, 0.50, 0.18, 1) if self.state == 'down' else (0.08, 0.65, 0.24, 1) if not self.disabled else (0.18, 0.30, 0.20, 0.55)
                 disabled: root.cart_empty
                 on_release: root.confirm_purchase()
+
+        # ── Versionszeile ──────────────────────────────────────────────
+        Label:
+            text: root.version_text
+            font_size: 13
+            color: 1, 1, 1, 0.20
+            halign: 'center'
+            text_size: self.width, None
+            size_hint_y: None
+            height: 22
 """)
 
 
@@ -209,6 +228,7 @@ class ShoppingScreen(Screen):
 
     status_text = StringProperty("• OFFLINE")
     status_color = [1.0, 0.42, 0.208, 1]
+    version_text = StringProperty(f"v{_VERSION}  ·  © 2026 Torsten Beyer")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

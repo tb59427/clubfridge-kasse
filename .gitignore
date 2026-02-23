@@ -1,0 +1,41 @@
+# Konfiguration – enthält Geheimnisse, NICHT committen!
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtuelle Umgebung
+.venv/
+venv/
+env/
+
+# Lokale Datenbank
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+
+# Pytest
+.pytest_cache/
+.ruff_cache/
+
+# Kivy
+*.kv~

@@ -29,6 +29,10 @@ log = logging.getLogger(__name__)
 Builder.load_string("""
 #:kivy 2.3
 
+# Kompaktes Layout für 10" RPi-Touchscreen (1024×600).
+# Kein ScrollView – alle Elemente passen auf den Bildschirm.
+# Zwei flexible Widget-Spacer zentrieren die Felder vertikal.
+
 <SetupScreen>:
     canvas.before:
         Color:
@@ -37,104 +41,72 @@ Builder.load_string("""
             pos: self.pos
             size: self.size
 
-    ScrollView:
+    BoxLayout:
+        orientation: 'vertical'
+        padding: [36, 20, 36, 16]
+
+        # ── Header: Wordmark links, Titel rechts ───────────────────────
+        BoxLayout:
+            size_hint_y: None
+            height: 46
+
+            Label:
+                text: '[color=ffffff]club[/color][color=ff6b35][b]fridge[/b][/color]'
+                markup: True
+                font_size: 28
+                size_hint_x: None
+                width: 170
+                halign: 'left'
+                valign: 'middle'
+                text_size: self.width, self.height
+
+            Widget:
+
+            Label:
+                text: 'Kasse einrichten'
+                font_size: 20
+                color: 0.78, 0.78, 0.78, 1
+                size_hint_x: None
+                width: 230
+                halign: 'right'
+                valign: 'middle'
+                text_size: self.width, self.height
+
+        # ── Hinweis ────────────────────────────────────────────────────
+        Label:
+            text: 'Daten aus dem Admin-UI eingeben – oder USB-Stick mit config.json verwenden.'
+            font_size: 15
+            color: 0.48, 0.48, 0.48, 1
+            size_hint_y: None
+            height: 26
+            halign: 'left'
+            text_size: self.width, None
+
+        # ── Flex-Spacer oben (zentriert Felder vertikal) ───────────────
+        Widget:
+            size_hint_y: 1
+
+        # ── Eingabefelder ──────────────────────────────────────────────
         BoxLayout:
             orientation: 'vertical'
-            padding: [40, 32, 40, 32]
-            spacing: 20
             size_hint_y: None
-            height: self.minimum_height
+            height: 272
+            spacing: 10
 
-            # ── Branding ──────────────────────────────────────────────────
-            BoxLayout:
-                size_hint_y: None
-                height: 80
-                spacing: 14
-
-                Widget:
-
-                Widget:
-                    size_hint: None, 1
-                    width: 38
-                    canvas:
-                        Color:
-                            rgba: 1.0, 0.42, 0.208, 1
-                        RoundedRectangle:
-                            pos: self.pos
-                            size: self.size
-                            radius: [7]
-                        Color:
-                            rgba: 1, 1, 1, 0.22
-                        Rectangle:
-                            pos: self.x, self.y + 50
-                            size: self.width, 2
-                        Color:
-                            rgba: 1, 1, 1, 0.75
-                        RoundedRectangle:
-                            pos: self.x + 24, self.y + 64
-                            size: 7, 2
-                            radius: [1]
-                        RoundedRectangle:
-                            pos: self.x + 24, self.y + 36
-                            size: 7, 2
-                            radius: [1]
-
-                BoxLayout:
-                    size_hint: None, 1
-                    width: 160
-                    orientation: 'vertical'
-                    Label:
-                        text: 'club'
-                        font_size: 36
-                        color: 1, 1, 1, 0.95
-                        halign: 'left'
-                        text_size: self.width, None
-                    Label:
-                        text: 'fridge'
-                        font_size: 36
-                        bold: True
-                        color: 1.0, 0.42, 0.208, 1
-                        halign: 'left'
-                        text_size: self.width, None
-
-                Widget:
-
-            # ── Überschrift ───────────────────────────────────────────────
-            Label:
-                text: 'Einrichtung'
-                font_size: 30
-                bold: True
-                color: 0.9, 0.9, 0.9, 1
-                size_hint_y: None
-                height: 42
-                halign: 'center'
-                text_size: self.width, None
-
-            Label:
-                text: 'Gib die Daten aus dem Admin-Bereich ein oder lass die Konfiguration\\nvom USB-Stick einlesen.'
-                font_size: 18
-                color: 0.6, 0.6, 0.6, 1
-                size_hint_y: None
-                height: 52
-                halign: 'center'
-                text_size: self.width, None
-
-            # ── Eingabefelder ─────────────────────────────────────────────
+            # Server-URL
             BoxLayout:
                 orientation: 'vertical'
                 size_hint_y: None
-                height: self.minimum_height
-                spacing: 6
-
+                height: 76
+                spacing: 4
                 Label:
                     text: 'Server-URL'
-                    font_size: 17
-                    color: 0.75, 0.75, 0.75, 1
+                    font_size: 14
+                    color: 0.58, 0.58, 0.58, 1
                     size_hint_y: None
-                    height: 28
+                    height: 18
                     halign: 'left'
                     text_size: self.width, None
-
                 TextInput:
                     id: server_url_input
                     text: root.server_url_text
@@ -143,20 +115,26 @@ Builder.load_string("""
                     size_hint_y: None
                     height: 54
                     multiline: False
-                    background_color: 0.13, 0.13, 0.13, 1
-                    foreground_color: 0.9, 0.9, 0.9, 1
+                    background_color: 0.12, 0.12, 0.12, 1
+                    foreground_color: 0.92, 0.92, 0.92, 1
                     cursor_color: 1.0, 0.42, 0.208, 1
+                    padding: [12, 14, 12, 0]
                     on_text: root.server_url_text = self.text
 
+            # Tenant-ID
+            BoxLayout:
+                orientation: 'vertical'
+                size_hint_y: None
+                height: 76
+                spacing: 4
                 Label:
                     text: 'Tenant-ID (Verein)'
-                    font_size: 17
-                    color: 0.75, 0.75, 0.75, 1
+                    font_size: 14
+                    color: 0.58, 0.58, 0.58, 1
                     size_hint_y: None
-                    height: 28
+                    height: 18
                     halign: 'left'
                     text_size: self.width, None
-
                 TextInput:
                     id: tenant_input
                     text: root.tenant_text
@@ -165,65 +143,76 @@ Builder.load_string("""
                     size_hint_y: None
                     height: 54
                     multiline: False
-                    background_color: 0.13, 0.13, 0.13, 1
-                    foreground_color: 0.9, 0.9, 0.9, 1
+                    background_color: 0.12, 0.12, 0.12, 1
+                    foreground_color: 0.92, 0.92, 0.92, 1
                     cursor_color: 1.0, 0.42, 0.208, 1
+                    padding: [12, 14, 12, 0]
                     on_text: root.tenant_text = self.text
 
+            # Einrichtungscode (größere Schrift für Touchscreen-Eingabe)
+            BoxLayout:
+                orientation: 'vertical'
+                size_hint_y: None
+                height: 100
+                spacing: 4
                 Label:
                     text: 'Einrichtungscode'
-                    font_size: 17
-                    color: 0.75, 0.75, 0.75, 1
+                    font_size: 14
+                    color: 0.58, 0.58, 0.58, 1
                     size_hint_y: None
-                    height: 28
+                    height: 18
                     halign: 'left'
                     text_size: self.width, None
-
                 TextInput:
                     id: token_input
                     text: root.token_text
                     hint_text: 'XXXX-XXXX-XXXX'
-                    font_size: 28
+                    font_size: 30
                     size_hint_y: None
-                    height: 66
+                    height: 78
                     multiline: False
-                    background_color: 0.13, 0.13, 0.13, 1
-                    foreground_color: 0.9, 0.9, 0.9, 1
+                    background_color: 0.12, 0.12, 0.12, 1
+                    foreground_color: 0.92, 0.92, 0.92, 1
                     cursor_color: 1.0, 0.42, 0.208, 1
+                    padding: [12, 20, 12, 0]
                     on_text: root.token_text = self.text
 
-            # ── Buttons ───────────────────────────────────────────────────
-            BoxLayout:
-                size_hint_y: None
-                height: 62
-                spacing: 16
+        # ── Flex-Spacer unten ──────────────────────────────────────────
+        Widget:
+            size_hint_y: 1
 
-                Button:
-                    text: 'USB-Stick suchen'
-                    font_size: 18
-                    size_hint_x: 0.42
-                    background_normal: ''
-                    background_color: 0.18, 0.26, 0.42, 1
-                    on_press: root.try_usb()
+        # ── Buttons ────────────────────────────────────────────────────
+        BoxLayout:
+            size_hint_y: None
+            height: 68
+            spacing: 16
 
-                Button:
-                    text: 'Einrichten'
-                    font_size: 20
-                    bold: True
-                    size_hint_x: 0.58
-                    background_normal: ''
-                    background_color: 1.0, 0.42, 0.208, 1
-                    on_press: root.do_provision()
-
-            # ── Statuszeile ───────────────────────────────────────────────
-            Label:
-                text: root.status_text
+            Button:
+                text: 'USB-Stick suchen'
                 font_size: 18
-                color: root.status_color
-                size_hint_y: None
-                height: 40
-                halign: 'center'
-                text_size: self.width, None
+                size_hint_x: 0.38
+                background_normal: ''
+                background_color: 0.18, 0.26, 0.42, 1
+                on_press: root.try_usb()
+
+            Button:
+                text: 'Einrichten'
+                font_size: 22
+                bold: True
+                size_hint_x: 0.62
+                background_normal: ''
+                background_color: 1.0, 0.42, 0.208, 1
+                on_press: root.do_provision()
+
+        # ── Statuszeile ────────────────────────────────────────────────
+        Label:
+            text: root.status_text
+            font_size: 16
+            color: root.status_color
+            size_hint_y: None
+            height: 32
+            halign: 'center'
+            text_size: self.width, None
 """)
 
 
