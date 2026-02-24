@@ -161,6 +161,18 @@ Builder.load_string("""
             height: 160 if root.cart_empty else 0
             opacity: 1 if root.cart_empty else 0
 
+        # ── Fehlermeldung ──────────────────────────────────────────────
+        Label:
+            id: error_label
+            text: root.error_text
+            font_size: 22
+            color: 1.0, 0.35, 0.2, 1
+            halign: 'center'
+            text_size: self.width, None
+            size_hint_y: None
+            height: 32 if root.error_text else 0
+            opacity: 1 if root.error_text else 0
+
         # ── Gesamtbetrag ───────────────────────────────────────────────
         BoxLayout:
             size_hint_y: None
@@ -241,6 +253,7 @@ class ShoppingScreen(Screen):
     balance_text = StringProperty("")
     total_price = NumericProperty(0.0)
     cart_empty = BooleanProperty(True)
+    error_text = StringProperty("")
 
     status_text = StringProperty("• OFFLINE")
     status_color = [1.0, 0.42, 0.208, 1]
@@ -303,7 +316,7 @@ class ShoppingScreen(Screen):
         product = find_product_by_barcode(barcode)
         if product is None:
             log.warning("Unbekannter Barcode: %s", barcode)
-            # TODO: kurze Fehleranzeige
+            self._show_error(f"Unbekannter Barcode: {barcode}")
             return
 
         # Bereits im Cart? → Menge erhöhen
@@ -378,6 +391,10 @@ class ShoppingScreen(Screen):
 
     def _scroll_down(self) -> None:
         self.ids.scroll.scroll_y = 0
+
+    def _show_error(self, msg: str) -> None:
+        self.error_text = msg
+        Clock.schedule_once(lambda *_: setattr(self, "error_text", ""), 3)
 
     # ------------------------------------------------------------------
     # Tastatur-Shortcuts für Entwicklungsmodus

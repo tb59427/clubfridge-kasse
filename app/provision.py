@@ -113,15 +113,22 @@ def detect_input_devices() -> tuple[str, str]:
         else:
             other_paths.append(dev)
 
-    # Barcode-Scanner: bevorzuge explizit benannte Scanner, fallback auf erstes verbleibendes Gerät
-    BARCODE_PATTERNS = ("barcode", "scanner", "honeywell", "zebra", "symbol", "datalogic", "point_of_sale")
+    # Barcode-Scanner: bevorzuge explizit benannte Scanner, dann Geräte mit
+    # eindeutiger Seriennummer (längerer Name), zuletzt erstes verbleibendes Gerät.
+    BARCODE_PATTERNS = (
+        "barcode", "scanner", "honeywell", "zebra", "symbol", "datalogic",
+        "point_of_sale", "m4_yx", "m4", "ls2208", "ls4278",
+    )
     barcode_path: Path | None = None
     for dev in other_paths:
         if any(p in dev.name.lower() for p in BARCODE_PATTERNS):
             barcode_path = dev
             break
     if barcode_path is None and other_paths:
-        barcode_path = other_paths[0]
+        # Prefer devices with a unique serial in the name (longer names) over
+        # generic "USB_Keyboard" entries — serial-identified devices are more
+        # likely to be the actual scanner rather than a plain keyboard.
+        barcode_path = max(other_paths, key=lambda p: len(p.name))
 
     if barcode_path:
         log.info("Geräteerkennung: Barcode-Scanner zugewiesen: %s", barcode_path.name)

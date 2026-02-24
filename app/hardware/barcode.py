@@ -88,7 +88,8 @@ class BarcodeScanner:
                 if isinstance(key_name, list):
                     key_name = key_name[0] if key_name else ""
 
-                if key_name == "KEY_ENTER":
+                log.debug("Barcode key: %s (state=%s)", key_name, key_event.keystate)
+                if key_name in ("KEY_ENTER", "KEY_KPENTER"):
                     barcode = self._buffer.strip()
                     self._buffer = ""
                     if barcode:
