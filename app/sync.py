@@ -149,6 +149,15 @@ class SyncManager:
             t = threading.Thread(target=self._try_sync_bookings, daemon=True)
             t.start()
 
+    def get_member_balance(self, member_id: str):
+        """
+        Gibt den offenen Saldo des Mitglieds zurück (Decimal) oder None wenn offline/Fehler.
+        Blockierend – aus einem Hintergrund-Thread aufrufen.
+        """
+        if not self.online:
+            return None
+        return self._api.get_member_balance(member_id)
+
     def force_refresh(self) -> None:
         """Cache sofort neu laden (z.B. nach manuellem Anstoß aus der UI)."""
         t = threading.Thread(target=self._try_refresh_cache, daemon=True)

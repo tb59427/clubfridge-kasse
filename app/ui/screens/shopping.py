@@ -103,15 +103,29 @@ Builder.load_string("""
         # ── Header ────────────────────────────────────────────────────
         BoxLayout:
             size_hint_y: None
-            height: 60
+            height: 90
 
-            Label:
-                text: 'Hallo, ' + root.member_name + '!'
-                font_size: 32
-                bold: True
-                color: 1.0, 0.42, 0.208, 1
-                halign: 'left'
-                text_size: self.width, None
+            BoxLayout:
+                orientation: 'vertical'
+
+                Label:
+                    text: 'Hallo, ' + root.member_name + '!'
+                    font_size: 32
+                    bold: True
+                    color: 1.0, 0.42, 0.208, 1
+                    halign: 'left'
+                    text_size: self.width, None
+                    size_hint_y: None
+                    height: 52
+
+                Label:
+                    text: root.balance_text
+                    font_size: 18
+                    color: 0.65, 0.65, 0.65, 1
+                    halign: 'left'
+                    text_size: self.width, None
+                    size_hint_y: None
+                    height: 28
 
             Label:
                 id: status_label
@@ -121,6 +135,7 @@ Builder.load_string("""
                 size_hint_x: None
                 width: 150
                 halign: 'right'
+                valign: 'top'
                 text_size: self.width, None
 
         # ── Artikel-Liste ──────────────────────────────────────────────
@@ -223,6 +238,7 @@ class CartItemRow(BoxLayout):
 
 class ShoppingScreen(Screen):
     member_name = StringProperty("")
+    balance_text = StringProperty("")
     total_price = NumericProperty(0.0)
     cart_empty = BooleanProperty(True)
 
@@ -243,10 +259,15 @@ class ShoppingScreen(Screen):
         self._member = member
         self._cart = []
         self.member_name = member.name
+        self.balance_text = ""
         self.total_price = 0.0
         self.cart_empty = True
         self._rebuild_cart_ui()
         log.info("Shopping-Session gestartet: %s", member.name)
+
+    def set_balance(self, balance) -> None:
+        """Wird aus dem Hintergrund-Thread via Clock.schedule_once aufgerufen."""
+        self.balance_text = f"Offener Saldo: {balance:.2f} €"
 
     def _end_session(self) -> None:
         self._member = None

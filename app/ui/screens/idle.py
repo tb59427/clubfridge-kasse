@@ -10,6 +10,7 @@ Entwicklungsmodus:
   F → Cache-Aktualisierung anstoßen
 """
 import logging
+import threading
 
 try:
     from importlib.metadata import version as _pkg_version
@@ -23,6 +24,7 @@ from kivy.lang import Builder
 from kivy.properties import BooleanProperty, StringProperty
 from kivy.uix.screenmanager import Screen
 
+from app.config import settings
 from app.local_db import find_member_by_rfid
 
 log = logging.getLogger(__name__)
@@ -235,6 +237,14 @@ class IdleScreen(Screen):
         shopping = app.root.get_screen("shopping")
         shopping.start_session(member)
         app.root.current = "shopping"
+
+        # Saldo im Hintergrund abrufen (nicht blockierend, Fehler werden ignoriert)
+        if settings.show_member_balance:
+            def _fetch_balance():
+                balance = app.sync_manager.get_member_balance(member.id)
+                if balance is not None:
+                    Clock.schedule_once(lambda _dt: shopping.set_balance(balance), 0)
+            threading.Thread(target=_fetch_balance, daemon=True).start()
 
     def _clear_error(self) -> None:
         self.error_text = ""

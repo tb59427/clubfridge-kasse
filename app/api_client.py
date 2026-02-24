@@ -89,6 +89,24 @@ class ApiClient:
             ]
 
     # ------------------------------------------------------------------
+    # Mitglieds-Saldo
+    # ------------------------------------------------------------------
+
+    def get_member_balance(self, member_id: str) -> Decimal | None:
+        """
+        Gibt den offenen Saldo des Mitglieds seit der letzten Abrechnung zurück.
+        Gibt None zurück wenn offline, nicht aktiviert oder ein Fehler auftritt.
+        """
+        try:
+            with self._client() as c:
+                r = c.get(f"{self._base}/members/{member_id}/balance")
+                r.raise_for_status()
+                return Decimal(str(r.json()["open_amount"]))
+        except Exception as e:
+            log.debug("Saldo-Abfrage fehlgeschlagen: %s", e)
+            return None
+
+    # ------------------------------------------------------------------
     # Buchungen synchronisieren
     # ------------------------------------------------------------------
 
