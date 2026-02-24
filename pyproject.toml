@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "clubfridge-kasse"
-version = "2.0.1"
+version = "2.1.0"
 description = "Clubfridge Digitale Kasse (Raspberry Pi)"
 requires-python = ">=3.11"
 dependencies = [
