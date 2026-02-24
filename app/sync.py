@@ -99,31 +99,38 @@ class SyncManager:
     def _try_refresh_cache(self) -> None:
         try:
             members = self._api.fetch_members()
-            products = self._api.fetch_products()
         except AuthError as e:
-            # Auth-Fehler beim Cache-Refresh werden geloggt; der Heartbeat
-            # in der Hauptschleife löst ggf. Deprovisioning aus.
-            log.warning("Cache-Refresh: Authentifizierungsfehler: %s", e)
+            log.warning("Cache-Refresh Mitglieder: Authentifizierungsfehler: %s", e)
             return
         except Exception as e:
-            log.warning("Cache-Aktualisierung fehlgeschlagen: %s", e)
+            log.warning("Cache-Refresh Mitglieder fehlgeschlagen: %s", e)
             return
+
+        try:
+            products = self._api.fetch_products()
+        except AuthError as e:
+            log.warning("Cache-Refresh Produkte: Authentifizierungsfehler: %s", e)
+            products = None
+        except Exception as e:
+            log.warning("Cache-Refresh Produkte fehlgeschlagen: %s", e)
+            products = None
 
         replace_member_cache([
             {"id": m.id, "name": m.name, "rfid_token": m.rfid_token}
             for m in members
         ])
-        replace_product_cache([
-            {"id": p.id, "name": p.name, "barcode": p.barcode, "price": str(p.price)}
-            for p in products
-        ])
+        if products is not None:
+            replace_product_cache([
+                {"id": p.id, "name": p.name, "barcode": p.barcode, "price": str(p.price)}
+                for p in products
+            ])
 
         self._last_cache_refresh_ts = time.monotonic()
         self.last_cache_at = datetime.now(timezone.utc)
-        log.info(
-            "Cache aktualisiert: %d Mitglieder, %d Produkte",
-            len(members), len(products),
-        )
+        if products is not None:
+            log.info("Cache aktualisiert: %d Mitglieder, %d Produkte", len(members), len(products))
+        else:
+            log.info("Cache aktualisiert: %d Mitglieder (Produkte nicht verfügbar)", len(members))
 
     # ------------------------------------------------------------------
     # Buchungs-Sync

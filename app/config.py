@@ -34,8 +34,8 @@ class Settings(BaseSettings):
 
     # Display
     fullscreen: bool = False
-    window_width: int = 1024
-    window_height: int = 600
+    window_width: int = 800
+    window_height: int = 480
 
 
 settings = Settings()
