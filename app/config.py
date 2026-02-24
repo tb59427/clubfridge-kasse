@@ -17,9 +17,6 @@ class Settings(BaseSettings):
     rfid_device: str = "/dev/input/event0"
     barcode_device: str = "/dev/input/event1"
 
-    # Feature-Flags (vom Server via /config befüllt, lokal gecacht)
-    show_member_balance: bool = False
-
     # Magnetschloss-Relais (GPIO, optional)
     has_relay: bool = False
     relay_gpio_pin: int = 18
