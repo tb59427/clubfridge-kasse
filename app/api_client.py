@@ -19,6 +19,21 @@ log = logging.getLogger(__name__)
 _TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 _HEALTH_TIMEOUT = httpx.Timeout(5.0, connect=3.0)
 
+# HTTP-Statuscodes, die auf ungültige/widerrufene Credentials hinweisen
+_AUTH_ERROR_CODES = frozenset({401, 403, 404})
+
+
+class AuthError(Exception):
+    """
+    Wird ausgelöst wenn der Server Authentifizierung ablehnt (401/403/404).
+
+    Tritt auf wenn:
+    - Der API-Key ungültig oder widerrufen wurde (401/403)
+    - Der Tenant nicht mehr existiert (404 via require_active_subscription)
+
+    Der SyncManager reagiert darauf mit Deprovisioning.
+    """
+
 
 @dataclass
 class RemoteMember:
@@ -46,7 +61,7 @@ class ApiClient:
         return httpx.Client(headers=self._headers, timeout=_TIMEOUT)
 
     # ------------------------------------------------------------------
-    # Konnektivität
+    # Konnektivität und Credential-Check
     # ------------------------------------------------------------------
 
     def is_online(self) -> bool:
@@ -57,6 +72,23 @@ class ApiClient:
         except Exception:
             return False
 
+    def heartbeat(self) -> None:
+        """
+        Prüft ob Kasse und Tenant beim Server noch gültig sind.
+
+        Wirft AuthError wenn der Server Credentials ablehnt (401/403)
+        oder der Tenant nicht mehr existiert (404).
+        Wirft httpx.RequestError bei Verbindungsproblemen.
+        """
+        with self._client() as c:
+            r = c.get(f"{self._base}/heartbeat")
+            if r.status_code in _AUTH_ERROR_CODES:
+                raise AuthError(
+                    f"Heartbeat HTTP {r.status_code}: "
+                    f"{r.json().get('detail', r.text)}"
+                )
+            r.raise_for_status()
+
     # ------------------------------------------------------------------
     # Cache-Daten holen
     # ------------------------------------------------------------------
@@ -64,6 +96,8 @@ class ApiClient:
     def fetch_members(self) -> list[RemoteMember]:
         with self._client() as c:
             r = c.get(f"{self._base}/members")
+            if r.status_code in _AUTH_ERROR_CODES:
+                raise AuthError(f"HTTP {r.status_code} beim Abrufen der Mitglieder")
             r.raise_for_status()
             return [
                 RemoteMember(
@@ -77,6 +111,8 @@ class ApiClient:
     def fetch_products(self) -> list[RemoteProduct]:
         with self._client() as c:
             r = c.get(f"{self._base}/products")
+            if r.status_code in _AUTH_ERROR_CODES:
+                raise AuthError(f"HTTP {r.status_code} beim Abrufen der Produkte")
             r.raise_for_status()
             return [
                 RemoteProduct(

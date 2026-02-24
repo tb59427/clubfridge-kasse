@@ -3,20 +3,28 @@ Background-Sync-Manager.
 
 Läuft als Daemon-Thread und erledigt periodisch:
 1. Konnektivitäts-Check (online/offline)
-2. Pending Bookings an den Server übermitteln
-3. Mitglieder- und Produkt-Cache vom Server aktualisieren
+2. Heartbeat: Credentials und Tenant-Status beim Server prüfen
+3. Pending Bookings an den Server übermitteln
+4. Mitglieder- und Produkt-Cache vom Server aktualisieren
 
 Alle DB-Operationen gehen über local_db.py (sync SQLite).
 Der Status (online, last_sync) kann von der UI abgefragt werden.
+
+Deprovisioning:
+  Wenn der Server beim Heartbeat mit 401/403 (ungültiger Key) oder 404
+  (Tenant gelöscht) antwortet, wird die Kasse automatisch deprovisioned:
+  lokaler Cache und .env werden gelöscht und der Prozess neu gestartet
+  → SetupScreen erscheint für die Neueinrichtung.
 """
 import logging
 import threading
 import time
 from datetime import datetime, timezone
 
-from app.api_client import ApiClient
+from app.api_client import ApiClient, AuthError
 from app.config import settings
 from app.local_db import (
+    clear_all_caches,
     get_pending_bookings,
     mark_bookings_synced,
     replace_member_cache,
@@ -66,6 +74,15 @@ class SyncManager:
             try:
                 self.online = self._api.is_online()
                 if self.online:
+                    # Expliziter Credentials-Check: Heartbeat schlägt sofort an
+                    # wenn Tenant gelöscht oder API-Key widerrufen wurde.
+                    try:
+                        self._api.heartbeat()
+                    except AuthError as e:
+                        log.error("Heartbeat: Kasse nicht mehr autorisiert – %s", e)
+                        self._deprovision()
+                        return
+
                     self._try_sync_bookings()
                     age = time.monotonic() - self._last_cache_refresh_ts
                     if age > settings.cache_refresh_interval_seconds:
@@ -83,6 +100,11 @@ class SyncManager:
         try:
             members = self._api.fetch_members()
             products = self._api.fetch_products()
+        except AuthError as e:
+            # Auth-Fehler beim Cache-Refresh werden geloggt; der Heartbeat
+            # in der Hauptschleife löst ggf. Deprovisioning aus.
+            log.warning("Cache-Refresh: Authentifizierungsfehler: %s", e)
+            return
         except Exception as e:
             log.warning("Cache-Aktualisierung fehlgeschlagen: %s", e)
             return
@@ -162,3 +184,41 @@ class SyncManager:
         """Cache sofort neu laden (z.B. nach manuellem Anstoß aus der UI)."""
         t = threading.Thread(target=self._try_refresh_cache, daemon=True)
         t.start()
+
+    # ------------------------------------------------------------------
+    # Deprovisioning (Tenant gelöscht / API-Key widerrufen)
+    # ------------------------------------------------------------------
+
+    def _deprovision(self) -> None:
+        """
+        Kasse hat ungültige Credentials (Tenant gelöscht oder API-Key widerrufen).
+
+        Löscht den lokalen Cache (Mitglieder, Produkte, ausstehende Buchungen) und
+        die .env-Konfiguration, dann wird der Prozess neu gestartet → SetupScreen
+        erscheint für die Neueinrichtung.
+
+        Wird aufgerufen wenn der Heartbeat 401/403/404 zurückgibt – d.h. nur wenn
+        der Server explizit erreichbar ist und die Ablehnung bestätigt.
+        """
+        import os
+        import sys
+
+        from kivy.clock import Clock
+
+        from app.provision import get_env_file
+
+        log.error("Deprovisioning: lokaler Cache und Konfiguration werden gelöscht")
+
+        self._running = False
+
+        clear_all_caches()
+        log.info("Lokaler Cache gelöscht")
+
+        env = get_env_file()
+        env.unlink(missing_ok=True)
+        log.info("Konfiguration gelöscht – Einrichtungs-Assistent wird gestartet")
+
+        Clock.schedule_once(
+            lambda _dt: os.execv(sys.executable, [sys.executable] + sys.argv),
+            2.0,
+        )

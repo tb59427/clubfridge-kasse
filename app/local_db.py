@@ -156,3 +156,17 @@ def replace_product_cache(products: list[dict]) -> None:
                 barcode=p.get("barcode"),
                 price=Decimal(str(p["price"])),
             ))
+
+
+def clear_all_caches() -> None:
+    """
+    Löscht alle lokalen Cache-Daten (Mitglieder, Produkte, ausstehende Buchungen).
+
+    Wird beim Deprovisioning aufgerufen wenn die Kasse ihre Zugangsdaten verliert
+    (Tenant gelöscht, API-Key widerrufen). Alle Daten sind serverseitig nicht mehr
+    erreichbar und müssen lokal bereinigt werden.
+    """
+    with get_session() as db:
+        db.query(CachedMember).delete()
+        db.query(CachedProduct).delete()
+        db.query(PendingBooking).delete()
