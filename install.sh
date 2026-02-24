@@ -27,6 +27,12 @@ SERVICE_NAME="clubfridge-kasse"
 # Benutzer unter dem die Kasse laufen soll (Standard: aktueller SUDO_USER)
 SERVICE_USER="${SUDO_USER:-${USER:-pi}}"
 
+# --reset: Konfiguration löschen → Einrichtungs-Assistent beim nächsten Start
+RESET=false
+for arg in "$@"; do
+    [[ "${arg}" == "--reset" ]] && RESET=true
+done
+
 # ── Farben ────────────────────────────────────────────────────────────────────
 
 RED='\033[0;31m'
@@ -125,6 +131,20 @@ else
 fi
 
 info "Kassen-Software bereit"
+
+# ── Konfiguration zurücksetzen (--reset) ──────────────────────────────────────
+
+ENV_FILE="${INSTALL_DIR}/.env"
+
+if [[ "${RESET}" == "true" ]]; then
+    step "Konfiguration wird zurückgesetzt…"
+    rm -f "${ENV_FILE}"
+    info "Konfiguration entfernt – Einrichtungs-Assistent erscheint nach dem Start."
+elif grep -q "^API_KEY=." "${ENV_FILE}" 2>/dev/null; then
+    info "Vorhandene Konfiguration bleibt erhalten."
+    warn "Zum Neu-Einrichten (anderer Tenant/Kasse) --reset übergeben:"
+    warn "  curl -fsSL https://install.clubfridge.de | sudo bash -s -- --reset"
+fi
 
 # ── Virtuelle Python-Umgebung ─────────────────────────────────────────────────
 
@@ -303,6 +323,9 @@ echo "     Alternativ: config.json per USB-Stick einlesen."
 echo ""
 echo "  4. Nach der Einrichtung startet die Kasse automatisch."
 echo "     Gerätepfade werden automatisch erkannt und in .env gespeichert."
+echo ""
+echo "  Neu einrichten (anderer Tenant oder neue Kasse):"
+echo "     curl -fsSL https://install.clubfridge.de | sudo bash -s -- --reset"
 echo ""
 echo "  Logs verfolgen:"
 echo "     sudo journalctl -fu ${SERVICE_NAME}@${SERVICE_USER}"

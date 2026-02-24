@@ -275,4 +275,14 @@ class IdleScreen(Screen):
             )
             return True
 
+        if key == ord("n") or key == ord("N"):
+            # Konfiguration löschen → Neu-Einrichtung beim Neustart
+            from app.provision import get_env_file
+            env = get_env_file()
+            if env.exists():
+                env.unlink()
+                log.warning("Konfiguration gelöscht – Neustart für Einrichtungs-Assistent")
+                self.prompt_text = "Konfiguration gelöscht – bitte Kasse neu starten"
+            return True
+
         return False
