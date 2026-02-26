@@ -143,6 +143,29 @@ class ApiClient:
             return None
 
     # ------------------------------------------------------------------
+    # Kassen-Konfiguration
+    # ------------------------------------------------------------------
+
+    def fetch_config(self) -> dict | None:
+        """
+        KasseConfig vom Server abrufen.
+        Gibt das rohe JSON-Dict zurück oder None bei Verbindungsfehlern.
+        Wirft AuthError wenn Credentials ungültig.
+        """
+        try:
+            with self._client() as c:
+                r = c.get(f"{self._base}/config")
+                if r.status_code in _AUTH_ERROR_CODES:
+                    raise AuthError(f"HTTP {r.status_code} beim Config-Abruf")
+                r.raise_for_status()
+                return r.json()
+        except AuthError:
+            raise
+        except Exception as e:
+            log.warning("Config-Abruf fehlgeschlagen: %s", e)
+            return None
+
+    # ------------------------------------------------------------------
     # Buchungen synchronisieren
     # ------------------------------------------------------------------
 

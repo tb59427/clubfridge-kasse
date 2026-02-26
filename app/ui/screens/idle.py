@@ -229,8 +229,8 @@ class IdleScreen(Screen):
         log.info("Mitglied erkannt: %s (%s)", member.name, member.id)
         app = App.get_running_app()
 
-        # Kuehlschrank entriegeln (falls Relais konfiguriert)
-        app.relay.open()
+        # Kuehlschrank entriegeln (falls Schloss konfiguriert)
+        app.lock.open()
 
         # Zum Shopping-Screen wechseln
         shopping = app.root.get_screen("shopping")

@@ -39,19 +39,32 @@ class KasseApp(App):
 
         # ── Normal-Modus ───────────────────────────────────────────────
         from app.hardware.barcode import BarcodeScanner
-        from app.hardware.relay import MagneticLockRelay
+        from app.hardware.lock import create_lock
         from app.hardware.rfid import RFIDReader
+        from app.local_db import get_cached_lock_config
         from app.sync import SyncManager
         from app.ui.screens.idle import IdleScreen
         from app.ui.screens.shopping import ShoppingScreen
 
         self.sync_manager = SyncManager()
 
-        self.relay = MagneticLockRelay(
-            gpio_pin=settings.relay_gpio_pin,
-            open_duration_ms=settings.relay_open_duration_ms,
-            enabled=settings.has_relay,
-        )
+        # Lock-Treiber: Server-Config > .env-Fallback > NoopLock
+        cached = get_cached_lock_config()
+        if cached:
+            self.lock = create_lock(
+                lock_type=cached["lock_type"],
+                host=cached.get("lock_host"),
+                gpio_pin=cached.get("lock_gpio_pin"),
+                open_duration_ms=cached.get("lock_open_duration_ms", 3000),
+            )
+        elif settings.has_relay:
+            self.lock = create_lock(
+                "gpio",
+                gpio_pin=settings.relay_gpio_pin,
+                open_duration_ms=settings.relay_open_duration_ms,
+            )
+        else:
+            self.lock = create_lock(None)
 
         self.rfid_reader = RFIDReader(
             device_path=settings.rfid_device,
@@ -83,7 +96,7 @@ class KasseApp(App):
         self.sync_manager.stop()
         self.rfid_reader.stop()
         self.barcode_scanner.stop()
-        self.relay.cleanup()
+        self.lock.cleanup()
         log.info("KasseApp beendet")
 
     # ------------------------------------------------------------------

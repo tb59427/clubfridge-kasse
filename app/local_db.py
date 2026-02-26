@@ -47,6 +47,14 @@ class CachedProduct(Base):
         return f"<CachedProduct {self.name} barcode={self.barcode} price={self.price}>"
 
 
+class CachedConfig(Base):
+    """Key-Value-Cache für vom Server bereitgestellte Konfiguration."""
+    __tablename__ = "cached_config"
+
+    key = Column(String(50), primary_key=True)
+    value = Column(Text, nullable=False)
+
+
 class PendingBooking(Base):
     """Eine Buchung, die lokal gespeichert und später synchronisiert wird."""
     __tablename__ = "pending_bookings"
@@ -160,7 +168,7 @@ def replace_product_cache(products: list[dict]) -> None:
 
 def clear_all_caches() -> None:
     """
-    Löscht alle lokalen Cache-Daten (Mitglieder, Produkte, ausstehende Buchungen).
+    Löscht alle lokalen Cache-Daten (Mitglieder, Produkte, ausstehende Buchungen, Config).
 
     Wird beim Deprovisioning aufgerufen wenn die Kasse ihre Zugangsdaten verliert
     (Tenant gelöscht, API-Key widerrufen). Alle Daten sind serverseitig nicht mehr
@@ -170,3 +178,25 @@ def clear_all_caches() -> None:
         db.query(CachedMember).delete()
         db.query(CachedProduct).delete()
         db.query(PendingBooking).delete()
+        db.query(CachedConfig).delete()
+
+
+# ---------------------------------------------------------------------------
+# Lock-Config Cache
+# ---------------------------------------------------------------------------
+
+def save_lock_config(config: dict | None) -> None:
+    """Lock-Konfiguration vom Server im lokalen Cache speichern."""
+    with get_session() as db:
+        db.query(CachedConfig).filter_by(key="lock_config").delete()
+        if config:
+            db.add(CachedConfig(key="lock_config", value=json.dumps(config)))
+
+
+def get_cached_lock_config() -> dict | None:
+    """Gecachte Lock-Konfiguration laden, oder None wenn nicht vorhanden."""
+    with get_session() as db:
+        row = db.query(CachedConfig).filter_by(key="lock_config").first()
+        if row:
+            return json.loads(row.value)
+    return None
