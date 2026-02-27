@@ -23,6 +23,7 @@ class Lock(abc.ABC):
     def __init__(self, open_duration_ms: int) -> None:
         self._duration = open_duration_ms / 1000.0
         self._lock = threading.Lock()
+        self._close_event = threading.Event()
 
     @abc.abstractmethod
     def _activate(self) -> None:
@@ -34,14 +35,19 @@ class Lock(abc.ABC):
 
     def open(self) -> None:
         """Schloss für die konfigurierte Dauer öffnen (non-blocking)."""
+        self._close_event.clear()
         t = threading.Thread(target=self._pulse, daemon=True, name="LockPulse")
         t.start()
+
+    def close(self) -> None:
+        """Schloss vorzeitig schließen (z. B. bei Abbruch oder Kaufabschluss)."""
+        self._close_event.set()
 
     def _pulse(self) -> None:
         with self._lock:
             try:
                 self._activate()
-                time.sleep(self._duration)
+                self._close_event.wait(timeout=self._duration)
             finally:
                 self._deactivate()
 
@@ -50,40 +56,28 @@ class Lock(abc.ABC):
 
 
 class GpioLock(Lock):
-    """GPIO-Relais-Schloss (BCM-Modus)."""
+    """GPIO-Relais-Schloss (BCM-Modus). Nur auf Raspberry Pi verwenden."""
 
     def __init__(self, gpio_pin: int, open_duration_ms: int) -> None:
         super().__init__(open_duration_ms)
         self._pin = gpio_pin
-        self._gpio_available = False
-        try:
-            import RPi.GPIO as GPIO
-            self._GPIO = GPIO
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(self._pin, GPIO.OUT, initial=GPIO.LOW)
-            self._gpio_available = True
-            log.info("GpioLock initialisiert: Pin %d", self._pin)
-        except (ImportError, RuntimeError):
-            log.warning("RPi.GPIO nicht verfügbar – GpioLock im Mock-Modus")
+        import RPi.GPIO as GPIO
+        self._GPIO = GPIO
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self._pin, GPIO.OUT, initial=GPIO.LOW)
+        log.info("GpioLock initialisiert: Pin %d", self._pin)
 
     def _activate(self) -> None:
-        if self._gpio_available:
-            self._GPIO.output(self._pin, self._GPIO.HIGH)
-            log.debug("GPIO HIGH (Pin %d)", self._pin)
-        else:
-            log.info("GpioLock (Mock): activate Pin %d", self._pin)
+        self._GPIO.output(self._pin, self._GPIO.HIGH)
+        log.debug("GPIO HIGH (Pin %d)", self._pin)
 
     def _deactivate(self) -> None:
-        if self._gpio_available:
-            self._GPIO.output(self._pin, self._GPIO.LOW)
-            log.debug("GPIO LOW (Pin %d)", self._pin)
-        else:
-            log.info("GpioLock (Mock): deactivate Pin %d", self._pin)
+        self._GPIO.output(self._pin, self._GPIO.LOW)
+        log.debug("GPIO LOW (Pin %d)", self._pin)
 
     def cleanup(self) -> None:
-        if self._gpio_available:
-            self._GPIO.cleanup(self._pin)
-            log.info("GpioLock GPIO aufgeräumt")
+        self._GPIO.cleanup(self._pin)
+        log.info("GpioLock GPIO aufgeräumt")
 
 
 class ShellyLock(Lock):
@@ -145,11 +139,23 @@ class NoopLock(Lock):
     def open(self) -> None:
         log.debug("NoopLock: kein Schloss konfiguriert")
 
+    def close(self) -> None:
+        pass
+
     def _activate(self) -> None:
         pass
 
     def _deactivate(self) -> None:
         pass
+
+
+def _is_gpio_available() -> bool:
+    """Prüft ob GPIO-Hardware verfügbar ist (nur auf Raspberry Pi)."""
+    try:
+        import RPi.GPIO  # noqa: F401
+        return True
+    except (ImportError, RuntimeError):
+        return False
 
 
 def create_lock(
@@ -163,6 +169,9 @@ def create_lock(
     if lock_type == "gpio":
         if gpio_pin is None:
             raise ValueError("gpio_pin erforderlich für GPIO-Lock")
+        if not _is_gpio_available():
+            log.warning("GPIO-Lock konfiguriert, aber RPi.GPIO nicht verfügbar – Lock deaktiviert")
+            return NoopLock()
         return GpioLock(gpio_pin=gpio_pin, open_duration_ms=open_duration_ms)
     elif lock_type == "shelly":
         if host is None:

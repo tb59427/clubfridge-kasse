@@ -286,6 +286,7 @@ class ShoppingScreen(Screen):
         self._member = None
         self._cart = []
         app = App.get_running_app()
+        app.lock.close()
         app.root.current = "idle"
 
     # ------------------------------------------------------------------
