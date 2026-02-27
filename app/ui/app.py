@@ -46,7 +46,10 @@ class KasseApp(App):
         from app.ui.screens.idle import IdleScreen
         from app.ui.screens.shopping import ShoppingScreen
 
+        from app.sse_listener import SSEListener
+
         self.sync_manager = SyncManager()
+        self.sse_listener = SSEListener()
 
         # Lock-Treiber: Server-Config > .env-Fallback > NoopLock
         cached = get_cached_lock_config()
@@ -88,6 +91,7 @@ class KasseApp(App):
         self.sync_manager.start()
         self.rfid_reader.start()
         self.barcode_scanner.start()
+        self.sse_listener.start()
         log.info("KasseApp gestartet (Tenant: %s)", settings.tenant_slug)
 
     def on_stop(self) -> None:
@@ -96,6 +100,7 @@ class KasseApp(App):
         self.sync_manager.stop()
         self.rfid_reader.stop()
         self.barcode_scanner.stop()
+        self.sse_listener.stop()
         self.lock.cleanup()
         log.info("KasseApp beendet")
 
