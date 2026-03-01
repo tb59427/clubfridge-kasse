@@ -22,7 +22,7 @@ from kivy.lang import Builder
 from kivy.properties import ListProperty, StringProperty
 from kivy.uix.screenmanager import Screen
 
-from app.provision import find_usb_config, provision_with_token, write_env
+from app.provision import detect_input_devices, find_usb_config, provision_with_token, write_env
 
 log = logging.getLogger(__name__)
 
@@ -291,15 +291,35 @@ class SetupScreen(Screen):
             )
 
     def _apply_config(self, api_url: str, tenant_slug: str, api_key: str) -> None:
-        """Schreibt .env und startet den Prozess neu."""
+        """Schreibt .env und startet den Prozess neu oder zeigt DeviceIdentScreen."""
         try:
             env_path = write_env(api_url, tenant_slug, api_key)
-            log.info("Konfiguration gespeichert: %s – Neustart in 2 Sekunden", env_path)
-            self._set_status("Konfiguration gespeichert – Neustart…", color="ok")
-            Clock.schedule_once(lambda _dt: _restart_process(), 2.0)
+            log.info("Konfiguration gespeichert: %s", env_path)
+
+            # Prüfe ob Geräte-Erkennung sicher war
+            detection = detect_input_devices()
+            if not detection.confident and len(detection.all_kbd_devices) >= 2:
+                log.info("Geräte-Erkennung unsicher – starte interaktive Identifikation")
+                self._set_status("Konfiguration gespeichert – Geräte werden identifiziert…", color="ok")
+                Clock.schedule_once(
+                    lambda _dt: self._show_device_ident(detection.all_kbd_devices), 1.5
+                )
+            else:
+                self._set_status("Konfiguration gespeichert – Neustart…", color="ok")
+                Clock.schedule_once(lambda _dt: _restart_process(), 2.0)
         except Exception as e:
             log.error("Fehler beim Speichern der Konfiguration: %s", e)
             self._set_status(f"Fehler beim Speichern: {e}", color="error")
+
+    def _show_device_ident(self, candidate_devices: list[str]) -> None:
+        """Wechselt zum DeviceIdentScreen für interaktive Geräte-Zuordnung."""
+        from app.ui.screens.device_ident import DeviceIdentScreen
+        sm = self.manager
+        if sm is None:
+            return
+        ident_screen = DeviceIdentScreen(candidate_devices=candidate_devices, name="device_ident")
+        sm.add_widget(ident_screen)
+        sm.current = "device_ident"
 
     def _set_status(self, text: str, color: str = "normal") -> None:
         self.status_text = text
