@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # Magnetschloss-Relais (GPIO, optional)
     has_relay: bool = False
-    relay_gpio_pin: int = 18
+    relay_gpio_pin: int = 17
     relay_open_duration_ms: int = 3000
 
     # Lokale SQLite-Datenbank

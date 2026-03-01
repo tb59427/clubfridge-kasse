@@ -61,23 +61,33 @@ class GpioLock(Lock):
     def __init__(self, gpio_pin: int, open_duration_ms: int) -> None:
         super().__init__(open_duration_ms)
         self._pin = gpio_pin
+        self._gpio_ready = False
         import RPi.GPIO as GPIO
         self._GPIO = GPIO
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(self._pin, GPIO.OUT, initial=GPIO.LOW)
+
+    def _ensure_gpio(self) -> None:
+        """GPIO erst bei Bedarf initialisieren (nicht im Konstruktor)."""
+        if self._gpio_ready:
+            return
+        self._GPIO.setmode(self._GPIO.BCM)
+        self._GPIO.setup(self._pin, self._GPIO.OUT, initial=self._GPIO.LOW)
+        self._gpio_ready = True
         log.info("GpioLock initialisiert: Pin %d", self._pin)
 
     def _activate(self) -> None:
+        self._ensure_gpio()
         self._GPIO.output(self._pin, self._GPIO.HIGH)
         log.debug("GPIO HIGH (Pin %d)", self._pin)
 
     def _deactivate(self) -> None:
+        self._ensure_gpio()
         self._GPIO.output(self._pin, self._GPIO.LOW)
         log.debug("GPIO LOW (Pin %d)", self._pin)
 
     def cleanup(self) -> None:
-        self._GPIO.cleanup(self._pin)
-        log.info("GpioLock GPIO aufgeräumt")
+        if self._gpio_ready:
+            self._GPIO.cleanup(self._pin)
+            log.info("GpioLock GPIO aufgeräumt")
 
 
 class ShellyLock(Lock):
