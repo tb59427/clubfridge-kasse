@@ -263,16 +263,19 @@ class ShoppingScreen(Screen):
         super().__init__(**kwargs)
         self._member: CachedMember | None = None
         self._cart: list[CartItem] = []
+        self._session_seq = 0  # Monoton steigend, schützt gegen veraltete Thread-Callbacks
 
     # ------------------------------------------------------------------
     # Session starten / beenden
     # ------------------------------------------------------------------
 
     def start_session(self, member: CachedMember) -> None:
+        self._session_seq += 1
         self._member = member
         self._cart = []
         self.member_name = member.name
         self.balance_text = ""
+        self.error_text = ""
         self.total_price = 0.0
         self.cart_empty = True
         self._rebuild_cart_ui()
@@ -294,6 +297,7 @@ class ShoppingScreen(Screen):
     # ------------------------------------------------------------------
 
     def on_enter(self) -> None:
+        Clock.unschedule(self._update_status)  # Sicherheitsnetz bei abgebrochener Transition
         Clock.schedule_interval(self._update_status, 5)
         self._update_status(0)
 
