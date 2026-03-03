@@ -11,7 +11,7 @@ import logging
 
 from kivy.app import App
 from kivy.core.window import Window
-from kivy.uix.screenmanager import FadeTransition, ScreenManager
+from kivy.uix.screenmanager import NoTransition, ScreenManager
 
 from app.config import settings
 from app.provision import is_configured
@@ -79,7 +79,7 @@ class KasseApp(App):
             on_scan=self._on_barcode_scan,
         )
 
-        sm = ScreenManager(transition=FadeTransition(duration=0.15))
+        sm = ScreenManager(transition=NoTransition())
         sm.add_widget(IdleScreen(name="idle"))
         sm.add_widget(ShoppingScreen(name="shopping"))
         return sm
