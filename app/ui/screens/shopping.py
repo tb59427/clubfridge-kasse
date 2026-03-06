@@ -391,11 +391,7 @@ class ShoppingScreen(Screen):
                 unit_price=float(item.unit_price),
             )
             box.add_widget(row)
-        # Scrolle nach unten
-        Clock.schedule_once(lambda _dt: self._scroll_down(), 0.05)
-
-    def _scroll_down(self) -> None:
-        self.ids.scroll.scroll_y = 0
+        self.ids.scroll.scroll_y = 1  # immer oben bleiben
 
     def _show_error(self, msg: str) -> None:
         self.error_text = msg
