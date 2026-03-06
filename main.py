@@ -16,7 +16,9 @@ from kivy.config import Config  # noqa: E402
 Config.set("kivy", "keyboard_mode", "system")
 Config.set("graphics", "resizable", "0")
 
-if settings.fullscreen:
+from app.provision import is_configured  # noqa: E402
+
+if settings.fullscreen or not is_configured():
     Config.set("graphics", "fullscreen", "auto")
 else:
     Config.set("graphics", "width", str(settings.window_width))
