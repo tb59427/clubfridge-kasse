@@ -41,9 +41,9 @@ Builder.load_string("""
 <CartItemRow>:
     orientation: 'horizontal'
     size_hint_y: None
-    height: 56
-    padding: [12, 6, 12, 6]
-    spacing: 8
+    height: 40
+    padding: [10, 3, 10, 3]
+    spacing: 6
 
     canvas.before:
         Color:
@@ -51,11 +51,11 @@ Builder.load_string("""
         RoundedRectangle:
             pos: self.pos
             size: self.size
-            radius: [8]
+            radius: [6]
 
     Label:
         text: root.product_name
-        font_size: 22
+        font_size: 18
         color: 0.95, 0.95, 0.95, 1
         halign: 'left'
         text_size: self.width, None
@@ -63,7 +63,7 @@ Builder.load_string("""
 
     Label:
         text: str(root.quantity) + ' ×'
-        font_size: 22
+        font_size: 18
         color: 0.6, 0.6, 0.6, 1
         size_hint_x: 0.15
         halign: 'center'
@@ -71,7 +71,7 @@ Builder.load_string("""
 
     Label:
         text: '{:.2f} €'.format(root.unit_price)
-        font_size: 22
+        font_size: 18
         color: 0.6, 0.6, 0.6, 1
         size_hint_x: 0.17
         halign: 'right'
@@ -79,7 +79,7 @@ Builder.load_string("""
 
     Label:
         text: '{:.2f} €'.format(root.quantity * root.unit_price)
-        font_size: 22
+        font_size: 18
         bold: True
         color: 0.95, 0.95, 0.95, 1
         size_hint_x: 0.18
@@ -97,43 +97,43 @@ Builder.load_string("""
 
     BoxLayout:
         orientation: 'vertical'
-        padding: [24, 16, 24, 16]
-        spacing: 12
+        padding: [16, 10, 16, 8]
+        spacing: 8
 
         # ── Header ────────────────────────────────────────────────────
         BoxLayout:
             size_hint_y: None
-            height: 90
+            height: 52
 
             BoxLayout:
                 orientation: 'vertical'
 
                 Label:
                     text: 'Hallo, ' + root.member_name + '!'
-                    font_size: 32
+                    font_size: 24
                     bold: True
                     color: 1.0, 0.42, 0.208, 1
                     halign: 'left'
                     text_size: self.width, None
                     size_hint_y: None
-                    height: 52
+                    height: 32
 
                 Label:
                     text: root.balance_text
-                    font_size: 18
+                    font_size: 15
                     color: 0.65, 0.65, 0.65, 1
                     halign: 'left'
                     text_size: self.width, None
                     size_hint_y: None
-                    height: 28
+                    height: 20
 
             Label:
                 id: status_label
                 text: root.status_text
                 color: root.status_color
-                font_size: 18
+                font_size: 15
                 size_hint_x: None
-                width: 150
+                width: 120
                 halign: 'right'
                 valign: 'top'
                 text_size: self.width, None
@@ -148,47 +148,47 @@ Builder.load_string("""
                 orientation: 'vertical'
                 size_hint_y: None
                 height: self.minimum_height
-                spacing: 6
+                spacing: 4
 
         # ── Leer-Hinweis ───────────────────────────────────────────────
         Label:
             id: empty_label
             text: 'Barcode scannen, um Produkt hinzuzufügen …'
-            font_size: 32
+            font_size: 24
             color: 0.5, 0.5, 0.5, 1
             halign: 'center'
             size_hint_y: None
-            height: 160 if root.cart_empty else 0
+            height: 120 if root.cart_empty else 0
             opacity: 1 if root.cart_empty else 0
 
         # ── Fehlermeldung ──────────────────────────────────────────────
         Label:
             id: error_label
             text: root.error_text
-            font_size: 22
+            font_size: 18
             color: 1.0, 0.35, 0.2, 1
             halign: 'center'
             text_size: self.width, None
             size_hint_y: None
-            height: 32 if root.error_text else 0
+            height: 26 if root.error_text else 0
             opacity: 1 if root.error_text else 0
 
         # ── Gesamtbetrag ───────────────────────────────────────────────
         BoxLayout:
             size_hint_y: None
-            height: 50
-            padding: [12, 0, 12, 0]
+            height: 38
+            padding: [10, 0, 10, 0]
 
             Label:
                 text: 'Gesamt'
-                font_size: 32
+                font_size: 24
                 color: 0.7, 0.7, 0.7, 1
                 halign: 'left'
                 text_size: self.width, None
 
             Label:
                 text: '{:.2f} €'.format(root.total_price)
-                font_size: 32
+                font_size: 24
                 bold: True
                 color: 1.0, 0.42, 0.208, 1
                 halign: 'right'
@@ -197,18 +197,18 @@ Builder.load_string("""
         # ── Buttons ────────────────────────────────────────────────────
         BoxLayout:
             size_hint_y: None
-            height: 80
-            spacing: 16
+            height: 56
+            spacing: 12
 
             Button:
                 text: 'Abbrechen'
-                font_size: 36
+                font_size: 28
                 background_color: 0.85, 0.22, 0.22, 1
                 on_release: root.cancel()
 
             Button:
                 text: 'Kaufen'
-                font_size: 36
+                font_size: 28
                 bold: True
                 color: 1, 1, 1, 1
                 background_normal: ''
@@ -220,12 +220,12 @@ Builder.load_string("""
         # ── Versionszeile ──────────────────────────────────────────────
         Label:
             text: root.version_text
-            font_size: 13
-            color: 1, 1, 1, 0.20
+            font_size: 11
+            color: 1, 1, 1, 0.15
             halign: 'center'
             text_size: self.width, None
             size_hint_y: None
-            height: 22
+            height: 16
 """)
 
 
