@@ -101,8 +101,11 @@ class GpioLock(Lock):
 
     def cleanup(self) -> None:
         if self._gpio_ready and not self._gpio_failed:
-            self._GPIO.cleanup(self._pin)
-            log.info("GpioLock GPIO aufgeräumt")
+            # Kein GPIO.cleanup() – das setzt den Pin auf INPUT und lässt ihn
+            # floaten, was bei Relay-Boards mit Pull-Up ein kurzes Schalten
+            # auslöst. Pin bleibt als OUTPUT/LOW stehen (sicher).
+            self._GPIO.output(self._pin, self._GPIO.LOW)
+            log.info("GpioLock: Pin %d bleibt LOW (kein cleanup)", self._pin)
 
 
 class ShellyLock(Lock):
