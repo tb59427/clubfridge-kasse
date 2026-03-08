@@ -19,7 +19,7 @@ import threading
 
 from kivy.clock import Clock
 from kivy.lang import Builder
-from kivy.properties import ListProperty, StringProperty
+from kivy.properties import BooleanProperty, ListProperty, StringProperty
 from kivy.uix.screenmanager import Screen
 
 from app.provision import probe_device, update_env_devices
@@ -108,10 +108,11 @@ Builder.load_string("""
         Widget:
             size_hint_y: 1
 
-        # ── Buttons ──────────────────────────────────────────────────
+        # ── Buttons (Probe-Phase) ───────────────────────────────────
         BoxLayout:
             size_hint_y: None
-            height: 50
+            height: 50 if not root.confirm_visible else 0
+            opacity: 0 if root.confirm_visible else 1
             spacing: 12
 
             Button:
@@ -121,6 +122,7 @@ Builder.load_string("""
                 background_normal: ''
                 background_color: 0.18, 0.26, 0.42, 1
                 on_press: root.skip()
+                disabled: root.confirm_visible
 
             Button:
                 text: 'Erneut versuchen'
@@ -129,6 +131,32 @@ Builder.load_string("""
                 background_normal: ''
                 background_color: 0.35, 0.35, 0.35, 1
                 on_press: root.retry()
+                disabled: root.confirm_visible
+
+        # ── Buttons (Bestätigung) ───────────────────────────────────
+        BoxLayout:
+            size_hint_y: None
+            height: 50 if root.confirm_visible else 0
+            opacity: 1 if root.confirm_visible else 0
+            spacing: 12
+
+            Button:
+                text: 'Nein'
+                font_size: 15
+                size_hint_x: 0.38
+                background_normal: ''
+                background_color: 0.8, 0.25, 0.15, 1
+                on_press: root.confirm_no()
+                disabled: not root.confirm_visible
+
+            Button:
+                text: 'Ja'
+                font_size: 15
+                size_hint_x: 0.62
+                background_normal: ''
+                background_color: 0.15, 0.6, 0.2, 1
+                on_press: root.confirm_yes()
+                disabled: not root.confirm_visible
 
         # ── Padding unten ────────────────────────────────────────────
         Widget:
@@ -142,6 +170,7 @@ class DeviceIdentScreen(Screen):
     instruction_text = StringProperty("Bitte RFID-Karte scannen…")
     status_text = StringProperty("Warte auf Eingabe…")
     status_color = ListProperty([0.7, 0.7, 0.7, 1])
+    confirm_visible = BooleanProperty(False)
 
     def __init__(self, candidate_devices: list[str], **kwargs) -> None:
         super().__init__(**kwargs)
@@ -205,7 +234,25 @@ class DeviceIdentScreen(Screen):
         self._barcode_device = path
         name = path.rsplit("/", 1)[-1] if "/" in path else path
         self._set_status(f"Barcode-Scanner erkannt: {name}", "ok")
-        Clock.schedule_once(lambda _dt: self._finish(), 1.5)
+        Clock.schedule_once(lambda _dt: self._show_confirmation(), 1.5)
+
+    def _show_confirmation(self) -> None:
+        rfid_name = self._rfid_device.rsplit("/", 1)[-1] if self._rfid_device and "/" in self._rfid_device else (self._rfid_device or "–")
+        barcode_name = self._barcode_device.rsplit("/", 1)[-1] if self._barcode_device and "/" in self._barcode_device else (self._barcode_device or "–")
+        self.step_label = "Zuordnung prüfen"
+        self.instruction_text = "Zuordnung korrekt?"
+        self._set_status(f"RFID: {rfid_name}  ·  Barcode: {barcode_name}", "normal")
+        self.confirm_visible = True
+
+    def confirm_yes(self) -> None:
+        self.confirm_visible = False
+        self._finish()
+
+    def confirm_no(self) -> None:
+        self.confirm_visible = False
+        self._rfid_device = None
+        self._barcode_device = None
+        self._start_rfid_probe()
 
     def _on_timeout(self) -> None:
         self._set_status("Timeout – keine Eingabe erkannt. Erneut versuchen oder überspringen.", "error")
