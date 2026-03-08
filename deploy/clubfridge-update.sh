@@ -25,6 +25,20 @@ warn() { echo "[clubfridge-update] ! $*" >&2; }
 
 log "Update-Check gestartet ($(date '+%Y-%m-%d %H:%M:%S'))"
 
+# Auf Pi 5: rpi-lgpio statt RPi.GPIO installieren (RP1-Chip braucht lgpio-Backend)
+# Läuft bei JEDEM Check (nicht nur bei Updates), damit bestehende Pi-5-Geräte
+# einmalig automatisch migriert werden.
+if grep -q "Raspberry Pi 5" /proc/device-tree/model 2>/dev/null; then
+    if "${VENV}/bin/pip" show RPi.GPIO &>/dev/null; then
+        "${VENV}/bin/pip" uninstall -y RPi.GPIO 2>/dev/null || true
+        "${VENV}/bin/pip" install rpi-lgpio --quiet
+        log "rpi-lgpio für Pi 5 installiert (ersetzt RPi.GPIO)"
+        # Service neustarten damit der neue GPIO-Treiber sofort aktiv wird
+        systemctl restart "${SERVICE_NAME}@${SERVICE_USER}"
+        info "Service neugestartet (GPIO-Treiber-Wechsel)"
+    fi
+fi
+
 # Netzwerk kurz abwarten (bei frühem Timer-Start)
 if ! git -C "${INSTALL_DIR}" fetch --quiet origin "${BRANCH}" 2>/dev/null; then
     warn "git fetch fehlgeschlagen – kein Netzwerk? Update wird übersprungen."

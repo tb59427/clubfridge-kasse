@@ -62,6 +62,7 @@ class GpioLock(Lock):
         super().__init__(open_duration_ms)
         self._pin = gpio_pin
         self._gpio_ready = False
+        self._gpio_failed = False
         import RPi.GPIO as GPIO
         self._GPIO = GPIO
 
@@ -69,23 +70,37 @@ class GpioLock(Lock):
         """GPIO erst bei Bedarf initialisieren (nicht im Konstruktor)."""
         if self._gpio_ready:
             return
-        self._GPIO.setmode(self._GPIO.BCM)
-        self._GPIO.setup(self._pin, self._GPIO.OUT, initial=self._GPIO.LOW)
-        self._gpio_ready = True
-        log.info("GpioLock initialisiert: Pin %d", self._pin)
+        if self._gpio_failed:
+            return
+        try:
+            self._GPIO.setmode(self._GPIO.BCM)
+            self._GPIO.setup(self._pin, self._GPIO.OUT, initial=self._GPIO.LOW)
+            self._gpio_ready = True
+            log.info("GpioLock initialisiert: Pin %d", self._pin)
+        except RuntimeError as e:
+            self._gpio_failed = True
+            log.error(
+                "GPIO-Initialisierung fehlgeschlagen (Pin %d): %s – "
+                "auf Pi 5 wird 'rpi-lgpio' statt 'RPi.GPIO' benötigt",
+                self._pin, e,
+            )
 
     def _activate(self) -> None:
         self._ensure_gpio()
+        if not self._gpio_ready:
+            return
         self._GPIO.output(self._pin, self._GPIO.HIGH)
         log.debug("GPIO HIGH (Pin %d)", self._pin)
 
     def _deactivate(self) -> None:
         self._ensure_gpio()
+        if not self._gpio_ready:
+            return
         self._GPIO.output(self._pin, self._GPIO.LOW)
         log.debug("GPIO LOW (Pin %d)", self._pin)
 
     def cleanup(self) -> None:
-        if self._gpio_ready:
+        if self._gpio_ready and not self._gpio_failed:
             self._GPIO.cleanup(self._pin)
             log.info("GpioLock GPIO aufgeräumt")
 
