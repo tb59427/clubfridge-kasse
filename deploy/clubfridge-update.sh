@@ -29,7 +29,9 @@ log "Update-Check gestartet ($(date '+%Y-%m-%d %H:%M:%S'))"
 # Läuft bei JEDEM Check (nicht nur bei Updates), damit bestehende Pi-5-Geräte
 # einmalig automatisch migriert werden.
 if grep -qa "Raspberry Pi 5" /proc/device-tree/model 2>/dev/null; then
-    if "${VENV}/bin/pip" show RPi.GPIO &>/dev/null; then
+    if ! "${VENV}/bin/pip" show rpi-lgpio &>/dev/null; then
+        # Build-Dependency für lgpio (C-Extension mit SWIG)
+        apt-get install -y swig --no-install-recommends -qq 2>/dev/null || true
         "${VENV}/bin/pip" uninstall -y RPi.GPIO 2>/dev/null || true
         "${VENV}/bin/pip" install rpi-lgpio --quiet
         log "rpi-lgpio für Pi 5 installiert (ersetzt RPi.GPIO)"
