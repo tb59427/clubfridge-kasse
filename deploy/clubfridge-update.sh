@@ -28,7 +28,7 @@ log "Update-Check gestartet ($(date '+%Y-%m-%d %H:%M:%S'))"
 # Auf Pi 5: rpi-lgpio statt RPi.GPIO installieren (RP1-Chip braucht lgpio-Backend)
 # Läuft bei JEDEM Check (nicht nur bei Updates), damit bestehende Pi-5-Geräte
 # einmalig automatisch migriert werden.
-if grep -q "Raspberry Pi 5" /proc/device-tree/model 2>/dev/null; then
+if grep -qa "Raspberry Pi 5" /proc/device-tree/model 2>/dev/null; then
     if "${VENV}/bin/pip" show RPi.GPIO &>/dev/null; then
         "${VENV}/bin/pip" uninstall -y RPi.GPIO 2>/dev/null || true
         "${VENV}/bin/pip" install rpi-lgpio --quiet
