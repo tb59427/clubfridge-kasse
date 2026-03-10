@@ -42,11 +42,15 @@ ensure_pi5_gpio() {
     apt-get install -y python3-lgpio -qq 2>/dev/null || true
 
     # 2. System-lgpio ins venv symlinken (venv hat kein --system-site-packages)
-    LGPIO_SO=$(python3 -c "import lgpio; print(lgpio.__file__)" 2>/dev/null) || true
-    if [[ -n "$LGPIO_SO" ]]; then
+    #    lgpio besteht aus lgpio.py + _lgpio.cpython-3XX-aarch64-linux-gnu.so
+    #    Beide Dateien müssen verlinkt werden!
+    SYS_SITE=$(python3 -c "import sysconfig; print(sysconfig.get_path('platlib'))" 2>/dev/null) || true
+    if [[ -n "$SYS_SITE" ]] && ls "${SYS_SITE}/"*lgpio* &>/dev/null; then
         VENV_SITE=$("${VENV}/bin/python3" -c "import sysconfig; print(sysconfig.get_path('platlib'))")
-        ln -sf "$LGPIO_SO" "${VENV_SITE}/"
-        log "lgpio aus System-Paket verlinkt: $LGPIO_SO"
+        for f in "${SYS_SITE}/"*lgpio*; do
+            ln -sf "$f" "${VENV_SITE}/"
+            log "lgpio verlinkt: $(basename "$f")"
+        done
     else
         warn "python3-lgpio nicht verfügbar – GPIO bleibt deaktiviert"
         return 0
@@ -56,6 +60,17 @@ ensure_pi5_gpio() {
     "${VENV}/bin/pip" uninstall -y RPi.GPIO 2>/dev/null || true
     "${VENV}/bin/pip" install rpi-lgpio --no-deps --quiet
     log "rpi-lgpio für Pi 5 installiert (ersetzt RPi.GPIO)"
+
+    # 4. Verifikation
+    if "${VENV}/bin/python3" -c "import RPi.GPIO; RPi.GPIO.setmode(RPi.GPIO.BCM)" &>/dev/null; then
+        info "Pi 5 GPIO-Fix verifiziert: RPi.GPIO funktioniert jetzt"
+    else
+        warn "Pi 5 GPIO-Fix fehlgeschlagen – RPi.GPIO funktioniert immer noch nicht"
+        # Debug-Info ausgeben
+        "${VENV}/bin/python3" -c "import RPi.GPIO; print('RPi.GPIO:', RPi.GPIO.__file__)" 2>&1 || true
+        "${VENV}/bin/python3" -c "import lgpio; print('lgpio:', lgpio.__file__)" 2>&1 || true
+        ls -la "${VENV_SITE}/"*lgpio* 2>&1 || true
+    fi
 }
 
 log "Update-Check gestartet ($(date '+%Y-%m-%d %H:%M:%S'))"
