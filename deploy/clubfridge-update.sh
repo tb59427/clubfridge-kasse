@@ -23,6 +23,8 @@ log()  { echo "[clubfridge-update] $*"; }
 info() { echo "[clubfridge-update] ✓ $*"; }
 warn() { echo "[clubfridge-update] ! $*" >&2; }
 
+PI5_FIX_APPLIED=false
+
 # ------------------------------------------------------------------------------
 # Pi 5 GPIO-Fix: rpi-lgpio statt RPi.GPIO (als Funktion, wird ggf. 2x aufgerufen)
 # pip install -e .[pi] installiert RPi.GPIO, das auf Pi 5 nicht funktioniert.
@@ -64,6 +66,7 @@ ensure_pi5_gpio() {
     # 4. Verifikation
     if "${VENV}/bin/python3" -c "import RPi.GPIO; RPi.GPIO.setmode(RPi.GPIO.BCM)" &>/dev/null; then
         info "Pi 5 GPIO-Fix verifiziert: RPi.GPIO funktioniert jetzt"
+        PI5_FIX_APPLIED=true
     else
         warn "Pi 5 GPIO-Fix fehlgeschlagen – RPi.GPIO funktioniert immer noch nicht"
         # Debug-Info ausgeben
@@ -88,6 +91,10 @@ BEFORE=$(git -C "${INSTALL_DIR}" rev-parse HEAD)
 AFTER=$(git -C "${INSTALL_DIR}" rev-parse "origin/${BRANCH}")
 
 if [[ "${BEFORE}" == "${AFTER}" ]]; then
+    if [[ "$PI5_FIX_APPLIED" == "true" ]]; then
+        log "Pi 5 GPIO-Fix angewendet – Service wird neugestartet"
+        systemctl restart "${SERVICE_NAME}@${SERVICE_USER}"
+    fi
     info "Kasse ist aktuell (${BEFORE:0:8}). Kein Update nötig."
     exit 0
 fi
