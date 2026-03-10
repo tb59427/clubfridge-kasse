@@ -28,7 +28,9 @@ PI5_FIX_APPLIED=false
 # ------------------------------------------------------------------------------
 # Pi 5 GPIO-Fix: rpi-lgpio statt RPi.GPIO (als Funktion, wird ggf. 2x aufgerufen)
 # pip install -e .[pi] installiert RPi.GPIO, das auf Pi 5 nicht funktioniert.
-# Strategie: python3-lgpio als vorkompiliertes apt-Paket + Symlink ins venv.
+# Strategie: Original RPi.GPIO entfernen, rpi-lgpio per pip (piwheels hat Wheels).
+# --force-reinstall nötig, weil pip sonst "already satisfied" sagt obwohl die
+# Dateien vom Original RPi.GPIO überschrieben wurden.
 # ------------------------------------------------------------------------------
 ensure_pi5_gpio() {
     grep -qa "Raspberry Pi 5" /proc/device-tree/model 2>/dev/null || return 0
@@ -46,30 +48,12 @@ GPIO.cleanup()
 
     log "Pi 5 erkannt: RPi.GPIO funktioniert nicht – installiere rpi-lgpio …"
 
-    # 1. Vorkompiliertes lgpio aus apt holen
-    apt-get install -y python3-lgpio -qq 2>/dev/null || true
-
-    # 2. System-lgpio ins venv symlinken (venv hat kein --system-site-packages)
-    #    lgpio besteht aus lgpio.py + _lgpio.cpython-3XX-aarch64-linux-gnu.so
-    #    Beide Dateien müssen verlinkt werden!
-    SYS_SITE=$(python3 -c "import sysconfig; print(sysconfig.get_path('platlib'))" 2>/dev/null) || true
-    if [[ -n "$SYS_SITE" ]] && ls "${SYS_SITE}/"*lgpio* &>/dev/null; then
-        VENV_SITE=$("${VENV}/bin/python3" -c "import sysconfig; print(sysconfig.get_path('platlib'))")
-        for f in "${SYS_SITE}/"*lgpio*; do
-            ln -sf "$f" "${VENV_SITE}/"
-            log "lgpio verlinkt: $(basename "$f")"
-        done
-    else
-        warn "python3-lgpio nicht verfügbar – GPIO bleibt deaktiviert"
-        return 0
-    fi
-
-    # 3. RPi.GPIO entfernen, rpi-lgpio ohne lgpio-Dependency installieren
+    # Original RPi.GPIO entfernen, rpi-lgpio mit force-reinstall (überschreibt Dateien)
     "${VENV}/bin/pip" uninstall -y RPi.GPIO 2>/dev/null || true
-    "${VENV}/bin/pip" install rpi-lgpio --no-deps --quiet
-    log "rpi-lgpio für Pi 5 installiert (ersetzt RPi.GPIO)"
+    "${VENV}/bin/pip" install --force-reinstall rpi-lgpio --quiet 2>&1 | grep -v "already satisfied" || true
+    log "rpi-lgpio installiert (ersetzt RPi.GPIO)"
 
-    # 4. Verifikation (setup() muss getestet werden – setmode() allein reicht nicht)
+    # Verifikation (setup() muss getestet werden – setmode() allein reicht nicht)
     if "${VENV}/bin/python3" -c "
 import RPi.GPIO as GPIO
 GPIO.setmode(GPIO.BCM)
@@ -80,10 +64,8 @@ GPIO.cleanup()
         PI5_FIX_APPLIED=true
     else
         warn "Pi 5 GPIO-Fix fehlgeschlagen – RPi.GPIO funktioniert immer noch nicht"
-        # Debug-Info ausgeben
         "${VENV}/bin/python3" -c "import RPi.GPIO; print('RPi.GPIO:', RPi.GPIO.__file__)" 2>&1 || true
         "${VENV}/bin/python3" -c "import lgpio; print('lgpio:', lgpio.__file__)" 2>&1 || true
-        ls -la "${VENV_SITE}/"*lgpio* 2>&1 || true
     fi
 }
 
