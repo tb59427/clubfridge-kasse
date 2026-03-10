@@ -35,12 +35,14 @@ class Lock(abc.ABC):
 
     def open(self) -> None:
         """Schloss für die konfigurierte Dauer öffnen (non-blocking)."""
+        log.info("Lock.open() aufgerufen (%s, %.1fs)", type(self).__name__, self._duration)
         self._close_event.clear()
         t = threading.Thread(target=self._pulse, daemon=True, name="LockPulse")
         t.start()
 
     def close(self) -> None:
         """Schloss vorzeitig schließen (z. B. bei Abbruch oder Kaufabschluss)."""
+        log.info("Lock.close() aufgerufen (%s)", type(self).__name__)
         self._close_event.set()
 
     def _pulse(self) -> None:
@@ -88,16 +90,17 @@ class GpioLock(Lock):
     def _activate(self) -> None:
         self._ensure_gpio()
         if not self._gpio_ready:
+            log.warning("GPIO nicht bereit – _activate() übersprungen (Pin %d)", self._pin)
             return
         self._GPIO.output(self._pin, self._GPIO.HIGH)
-        log.debug("GPIO HIGH (Pin %d)", self._pin)
+        log.info("GPIO HIGH (Pin %d)", self._pin)
 
     def _deactivate(self) -> None:
         self._ensure_gpio()
         if not self._gpio_ready:
             return
         self._GPIO.output(self._pin, self._GPIO.LOW)
-        log.debug("GPIO LOW (Pin %d)", self._pin)
+        log.info("GPIO LOW (Pin %d)", self._pin)
 
     def cleanup(self) -> None:
         if self._gpio_ready and not self._gpio_failed:
@@ -194,6 +197,10 @@ def create_lock(
     open_duration_ms: int = 3000,
 ) -> Lock:
     """Factory: erstellt den passenden Lock-Treiber anhand der Konfiguration."""
+    log.info(
+        "create_lock: type=%s, host=%s, gpio_pin=%s, duration=%dms",
+        lock_type, host, gpio_pin, open_duration_ms,
+    )
     if lock_type == "gpio":
         if gpio_pin is None:
             raise ValueError("gpio_pin erforderlich für GPIO-Lock")
@@ -210,4 +217,5 @@ def create_lock(
             raise ValueError("host erforderlich für Tasmota-Lock")
         return TasmotaLock(host=host, open_duration_ms=open_duration_ms)
     else:
+        log.info("Kein Lock-Typ konfiguriert – NoopLock erstellt")
         return NoopLock()
