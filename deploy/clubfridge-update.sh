@@ -34,7 +34,13 @@ ensure_pi5_gpio() {
     grep -qa "Raspberry Pi 5" /proc/device-tree/model 2>/dev/null || return 0
 
     # Prüfen ob RPi.GPIO tatsächlich funktioniert (rpi-lgpio liefert ein funktionierendes RPi.GPIO)
-    if "${VENV}/bin/python3" -c "import RPi.GPIO; RPi.GPIO.setmode(RPi.GPIO.BCM)" &>/dev/null; then
+    # WICHTIG: setmode() allein reicht nicht – erst setup() triggert die Hardware-Erkennung!
+    if "${VENV}/bin/python3" -c "
+import RPi.GPIO as GPIO
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(4, GPIO.IN)
+GPIO.cleanup()
+" &>/dev/null; then
         return 0
     fi
 
@@ -63,8 +69,13 @@ ensure_pi5_gpio() {
     "${VENV}/bin/pip" install rpi-lgpio --no-deps --quiet
     log "rpi-lgpio für Pi 5 installiert (ersetzt RPi.GPIO)"
 
-    # 4. Verifikation
-    if "${VENV}/bin/python3" -c "import RPi.GPIO; RPi.GPIO.setmode(RPi.GPIO.BCM)" &>/dev/null; then
+    # 4. Verifikation (setup() muss getestet werden – setmode() allein reicht nicht)
+    if "${VENV}/bin/python3" -c "
+import RPi.GPIO as GPIO
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(4, GPIO.IN)
+GPIO.cleanup()
+" &>/dev/null; then
         info "Pi 5 GPIO-Fix verifiziert: RPi.GPIO funktioniert jetzt"
         PI5_FIX_APPLIED=true
     else
