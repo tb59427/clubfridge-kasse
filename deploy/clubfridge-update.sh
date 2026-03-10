@@ -28,13 +28,28 @@ log "Update-Check gestartet ($(date '+%Y-%m-%d %H:%M:%S'))"
 # Auf Pi 5: rpi-lgpio statt RPi.GPIO installieren (RP1-Chip braucht lgpio-Backend)
 # Läuft bei JEDEM Check (nicht nur bei Updates), damit bestehende Pi-5-Geräte
 # einmalig automatisch migriert werden.
+# Strategie: python3-lgpio als vorkompiliertes apt-Paket installieren und
+# ins venv symlinken (vermeidet C-Build mit swig/liblgpio-dev).
 if grep -qa "Raspberry Pi 5" /proc/device-tree/model 2>/dev/null; then
-    if ! "${VENV}/bin/pip" show rpi-lgpio &>/dev/null; then
-        # Build-Dependencies für lgpio (C-Extension: SWIG + lgpio-Lib)
-        apt-get install -y swig liblgpio-dev --no-install-recommends -qq 2>/dev/null || true
+    if ! "${VENV}/bin/python3" -c "import RPi.GPIO" &>/dev/null; then
+        # 1. Vorkompiliertes lgpio aus apt holen
+        apt-get install -y python3-lgpio -qq 2>/dev/null || true
+
+        # 2. System-lgpio ins venv symlinken (venv hat kein --system-site-packages)
+        LGPIO_SO=$(python3 -c "import lgpio; print(lgpio.__file__)" 2>/dev/null) || true
+        if [[ -n "$LGPIO_SO" ]]; then
+            VENV_SITE=$("${VENV}/bin/python3" -c "import sysconfig; print(sysconfig.get_path('platlib'))")
+            ln -sf "$LGPIO_SO" "${VENV_SITE}/"
+            log "lgpio aus System-Paket verlinkt: $LGPIO_SO"
+        else
+            warn "python3-lgpio nicht verfügbar – GPIO bleibt deaktiviert"
+        fi
+
+        # 3. RPi.GPIO entfernen, rpi-lgpio ohne lgpio-Dependency installieren
         "${VENV}/bin/pip" uninstall -y RPi.GPIO 2>/dev/null || true
-        "${VENV}/bin/pip" install rpi-lgpio --quiet
+        "${VENV}/bin/pip" install rpi-lgpio --no-deps --quiet
         log "rpi-lgpio für Pi 5 installiert (ersetzt RPi.GPIO)"
+
         # Service neustarten damit der neue GPIO-Treiber sofort aktiv wird
         systemctl restart "${SERVICE_NAME}@${SERVICE_USER}"
         info "Service neugestartet (GPIO-Treiber-Wechsel)"
