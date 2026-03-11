@@ -26,12 +26,12 @@ except Exception:
 from kivy.app import App
 from kivy.clock import Clock
 from kivy.lang import Builder
-from kivy.properties import BooleanProperty, NumericProperty, StringProperty
+from kivy.properties import BooleanProperty, ListProperty, NumericProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
 
-from app.local_db import CachedMember, CachedProduct, find_product_by_barcode
+from app.local_db import CachedMember, CachedProduct, find_product_by_barcode, get_billing_targets
 
 log = logging.getLogger(__name__)
 
@@ -137,6 +137,29 @@ Builder.load_string("""
                 halign: 'right'
                 valign: 'top'
                 text_size: self.width, None
+
+        # ── Buchungskonto (optional) ──────────────────────────────────
+        BoxLayout:
+            size_hint_y: None
+            height: 30 if root.billing_info else 0
+            opacity: 1 if root.billing_info else 0
+            padding: [10, 0, 10, 0]
+            Label:
+                text: root.billing_info
+                font_size: 15
+                color: 1.0, 0.75, 0.3, 1
+                halign: 'left'
+                text_size: self.width, None
+
+        Spinner:
+            id: billing_spinner
+            text: 'Eigenes Konto'
+            values: root.billing_options
+            size_hint_y: None
+            height: 36 if root.has_billing_choice else 0
+            opacity: 1 if root.has_billing_choice else 0
+            font_size: 16
+            on_text: root.on_billing_target_changed(self.text)
 
         # ── Artikel-Liste ──────────────────────────────────────────────
         ScrollView:
@@ -254,6 +277,9 @@ class ShoppingScreen(Screen):
     total_price = NumericProperty(0.0)
     cart_empty = BooleanProperty(True)
     error_text = StringProperty("")
+    billing_info = StringProperty("")
+    billing_options = ListProperty([])
+    has_billing_choice = BooleanProperty(False)
 
     status_text = StringProperty("• OFFLINE")
     status_color = [1.0, 0.42, 0.208, 1]
@@ -264,6 +290,8 @@ class ShoppingScreen(Screen):
         self._member: CachedMember | None = None
         self._cart: list[CartItem] = []
         self._session_seq = 0  # Monoton steigend, schützt gegen veraltete Thread-Callbacks
+        self._billing_targets: list[dict] = []  # [{"id": "...", "name": "..."}]
+        self._selected_billing_target_id: str | None = None
 
     # ------------------------------------------------------------------
     # Session starten / beenden
@@ -278,12 +306,54 @@ class ShoppingScreen(Screen):
         self.error_text = ""
         self.total_price = 0.0
         self.cart_empty = True
+        self._billing_targets = []
+        self._selected_billing_target_id = None
+        self.has_billing_choice = False
+        self.billing_options = []
+
+        # Automatische Weiterleitung (z.B. Eltern/Kind)
+        if member.billed_to_id:
+            self.billing_info = f"Abrechnung über: {member.billed_to_name}"
+            self._selected_billing_target_id = member.billed_to_id
+        else:
+            self.billing_info = ""
+            # Lokalen Cache für Billing-Targets prüfen
+            cached = get_billing_targets(member.id)
+            if cached:
+                self._set_billing_targets([
+                    {"id": t.target_id, "name": t.target_name} for t in cached
+                ])
+
         self._rebuild_cart_ui()
         log.info("Shopping-Session gestartet: %s", member.name)
 
     def set_balance(self, balance) -> None:
         """Wird aus dem Hintergrund-Thread via Clock.schedule_once aufgerufen."""
         self.balance_text = f"Offener Saldo: {balance:.2f} €"
+
+    def set_billing_targets(self, targets: list[dict]) -> None:
+        """Wird aus dem Hintergrund-Thread via Clock.schedule_once aufgerufen."""
+        if self._member and not self._member.billed_to_id:
+            self._set_billing_targets(targets)
+
+    def _set_billing_targets(self, targets: list[dict]) -> None:
+        self._billing_targets = targets
+        if targets:
+            self.billing_options = ["Eigenes Konto"] + [t["name"] for t in targets]
+            self.has_billing_choice = True
+        else:
+            self.billing_options = []
+            self.has_billing_choice = False
+
+    def on_billing_target_changed(self, text: str) -> None:
+        """Callback vom Spinner: Buchungskonto gewechselt."""
+        if text == "Eigenes Konto" or not text:
+            self._selected_billing_target_id = None
+        else:
+            for t in self._billing_targets:
+                if t["name"] == text:
+                    self._selected_billing_target_id = t["id"]
+                    break
 
     def _end_session(self) -> None:
         self._member = None
@@ -360,10 +430,16 @@ class ShoppingScreen(Screen):
         ]
         total = Decimal(str(self.total_price))
 
+        # Billing-Target: explizite Auswahl oder automatische Weiterleitung
+        billed_to = self._selected_billing_target_id
+        if not billed_to and self._member.billed_to_id:
+            billed_to = self._member.billed_to_id
+
         App.get_running_app().sync_manager.submit_booking(
             member_id=self._member.id,
             items=items,
             total_price=total,
+            billed_to_member_id=billed_to,
         )
         log.info("Buchung abgeschlossen: %s × %d Positionen = %s €",
                  self._member.name, len(items), total)

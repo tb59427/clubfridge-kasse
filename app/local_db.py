@@ -12,8 +12,12 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Column, DateTime, Numeric, String, Text, create_engine
+import logging
+
+from sqlalchemy import Boolean, Column, DateTime, Numeric, String, Text, create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+
+log = logging.getLogger(__name__)
 
 from app.config import settings
 
@@ -28,6 +32,8 @@ class CachedMember(Base):
     id = Column(String(36), primary_key=True)
     name = Column(String(200), nullable=False)
     rfid_token = Column(String(100), unique=True, nullable=True)
+    billed_to_id = Column(String(36), nullable=True)
+    billed_to_name = Column(String(200), nullable=True)
     synced_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self) -> str:
@@ -55,6 +61,16 @@ class CachedConfig(Base):
     value = Column(Text, nullable=False)
 
 
+class CachedBillingTarget(Base):
+    """Sonderkonto, auf das ein Mitglied buchen darf."""
+    __tablename__ = "cached_billing_targets"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    member_id = Column(String(36), nullable=False, index=True)
+    target_id = Column(String(36), nullable=False)
+    target_name = Column(String(200), nullable=False)
+
+
 class PendingBooking(Base):
     """Eine Buchung, die lokal gespeichert und später synchronisiert wird."""
     __tablename__ = "pending_bookings"
@@ -66,6 +82,7 @@ class PendingBooking(Base):
     total_price = Column(Numeric(10, 2), nullable=False)
     booked_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     synced = Column(Boolean, default=False, nullable=False)
+    billed_to_member_id = Column(String(36), nullable=True)
 
     @property
     def items(self) -> list[dict]:
@@ -82,6 +99,22 @@ _engine = create_engine(
     echo=False,
 )
 Base.metadata.create_all(_engine)
+
+# Schema-Migration: Fehlende Spalten in bestehenden Tabellen ergänzen.
+# create_all() erstellt nur neue Tabellen, ändert aber keine bestehenden.
+_inspector = inspect(_engine)
+for _table in Base.metadata.sorted_tables:
+    if _table.name in _inspector.get_table_names():
+        _existing = {c["name"] for c in _inspector.get_columns(_table.name)}
+        for _col in _table.columns:
+            if _col.name not in _existing:
+                _col_type = _col.type.compile(dialect=_engine.dialect)
+                log.info("Schema-Migration: ALTER TABLE %s ADD COLUMN %s %s",
+                         _table.name, _col.name, _col_type)
+                with _engine.begin() as _conn:
+                    _conn.execute(text(
+                        f"ALTER TABLE {_table.name} ADD COLUMN {_col.name} {_col_type}"
+                    ))
 
 _SessionFactory = sessionmaker(bind=_engine, expire_on_commit=False)
 
@@ -119,6 +152,7 @@ def save_pending_booking(
     items: list[dict],
     total_price: Decimal,
     booked_at: datetime | None = None,
+    billed_to_member_id: str | None = None,
 ) -> PendingBooking:
     with get_session() as db:
         booking = PendingBooking(
@@ -126,6 +160,7 @@ def save_pending_booking(
             items_json=json.dumps(items),
             total_price=total_price,
             booked_at=booked_at or datetime.now(timezone.utc),
+            billed_to_member_id=billed_to_member_id,
         )
         db.add(booking)
     return booking
@@ -151,6 +186,8 @@ def replace_member_cache(members: list[dict]) -> None:
                 id=m["id"],
                 name=m["name"],
                 rfid_token=m.get("rfid_token"),
+                billed_to_id=m.get("billed_to_id"),
+                billed_to_name=m.get("billed_to_name"),
             ))
 
 
@@ -179,6 +216,7 @@ def clear_all_caches() -> None:
         db.query(CachedProduct).delete()
         db.query(PendingBooking).delete()
         db.query(CachedConfig).delete()
+        db.query(CachedBillingTarget).delete()
 
 
 # ---------------------------------------------------------------------------
@@ -200,3 +238,25 @@ def get_cached_lock_config() -> dict | None:
         if row:
             return json.loads(row.value)
     return None
+
+
+# ---------------------------------------------------------------------------
+# Billing-Targets Cache
+# ---------------------------------------------------------------------------
+
+def replace_billing_targets(member_id: str, targets: list[dict]) -> None:
+    """Billing-Targets eines Mitglieds im Cache ersetzen."""
+    with get_session() as db:
+        db.query(CachedBillingTarget).filter_by(member_id=member_id).delete()
+        for t in targets:
+            db.add(CachedBillingTarget(
+                member_id=member_id,
+                target_id=t["id"],
+                target_name=t["name"],
+            ))
+
+
+def get_billing_targets(member_id: str) -> list[CachedBillingTarget]:
+    """Gecachte Billing-Targets eines Mitglieds laden."""
+    with get_session() as db:
+        return db.query(CachedBillingTarget).filter_by(member_id=member_id).all()

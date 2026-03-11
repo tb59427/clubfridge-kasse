@@ -238,16 +238,21 @@ class IdleScreen(Screen):
         shopping.start_session(member)
         app.root.current = "shopping"
 
-        # Saldo im Hintergrund abrufen (nicht blockierend, Fehler werden ignoriert).
-        # Ob die Kasse Saldo anzeigen darf, entscheidet der Server (show_member_balance
-        # am Register) – bei 403 gibt get_member_balance() None zurück und es wird
-        # nichts angezeigt. Kein lokales Flag nötig.
+        # Saldo und Billing-Targets im Hintergrund abrufen (nicht blockierend).
         seq = shopping._session_seq  # Guard: nur setzen wenn Session noch aktuell
-        def _fetch_balance():
+
+        def _fetch_background():
+            # Saldo abrufen
             balance = app.sync_manager.get_member_balance(member.id)
             if balance is not None and shopping._session_seq == seq:
                 Clock.schedule_once(lambda _dt: shopping.set_balance(balance), 0)
-        threading.Thread(target=_fetch_balance, daemon=True).start()
+            # Billing-Targets abrufen (nur wenn kein festes billed_to)
+            if not member.billed_to_id:
+                targets = app.sync_manager.get_billing_targets(member.id)
+                if targets and shopping._session_seq == seq:
+                    Clock.schedule_once(lambda _dt: shopping.set_billing_targets(targets), 0)
+
+        threading.Thread(target=_fetch_background, daemon=True).start()
 
     def _clear_error(self) -> None:
         self.error_text = ""

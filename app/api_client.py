@@ -40,6 +40,8 @@ class RemoteMember:
     id: str
     name: str
     rfid_token: str | None
+    billed_to_id: str | None = None
+    billed_to_name: str | None = None
 
 
 @dataclass
@@ -104,6 +106,8 @@ class ApiClient:
                     id=m["id"],
                     name=m["name"],
                     rfid_token=m.get("rfid_token"),
+                    billed_to_id=m.get("billed_to_id"),
+                    billed_to_name=m.get("billed_to_name"),
                 )
                 for m in r.json()
             ]
@@ -141,6 +145,25 @@ class ApiClient:
         except Exception as e:
             log.debug("Saldo-Abfrage fehlgeschlagen: %s", e)
             return None
+
+    # ------------------------------------------------------------------
+    # Billing-Targets (Sonderkonten)
+    # ------------------------------------------------------------------
+
+    def fetch_billing_targets(self, member_id: str) -> list[dict]:
+        """Sonderkonten abrufen, auf die das Mitglied Zugriff hat."""
+        try:
+            with self._client() as c:
+                r = c.get(f"{self._base}/members/{member_id}/billing-targets")
+                if r.status_code in _AUTH_ERROR_CODES:
+                    raise AuthError(f"HTTP {r.status_code} beim Abrufen der Billing-Targets")
+                r.raise_for_status()
+                return r.json()
+        except AuthError:
+            raise
+        except Exception as e:
+            log.debug("Billing-Targets-Abfrage fehlgeschlagen: %s", e)
+            return []
 
     # ------------------------------------------------------------------
     # Kassen-Konfiguration

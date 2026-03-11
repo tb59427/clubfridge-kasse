@@ -30,6 +30,7 @@ from app.local_db import (
     get_cached_lock_config,
     get_pending_bookings,
     mark_bookings_synced,
+    replace_billing_targets,
     replace_member_cache,
     replace_product_cache,
     save_lock_config,
@@ -121,7 +122,10 @@ class SyncManager:
             products = None
 
         replace_member_cache([
-            {"id": m.id, "name": m.name, "rfid_token": m.rfid_token}
+            {
+                "id": m.id, "name": m.name, "rfid_token": m.rfid_token,
+                "billed_to_id": m.billed_to_id, "billed_to_name": m.billed_to_name,
+            }
             for m in members
         ])
         if products is not None:
@@ -199,14 +203,16 @@ class SyncManager:
         if not pending:
             return
 
-        payload = [
-            {
+        payload = []
+        for b in pending:
+            entry: dict = {
                 "member_id": b.member_id,
                 "booked_at": b.booked_at.isoformat(),
                 "items": b.items,
             }
-            for b in pending
-        ]
+            if b.billed_to_member_id:
+                entry["billed_to_member_id"] = b.billed_to_member_id
+            payload.append(entry)
 
         if self._api.sync_bookings(payload):
             mark_bookings_synced([b.id for b in pending])
@@ -223,12 +229,13 @@ class SyncManager:
         items: list[dict],
         total_price,
         booked_at: datetime | None = None,
+        billed_to_member_id: str | None = None,
     ) -> None:
         """
         Speichert eine Buchung lokal und versucht sofortigen Sync.
         Wird aus dem Kivy-Main-Thread aufgerufen – DB-Write ist kurz genug.
         """
-        save_pending_booking(member_id, items, total_price, booked_at)
+        save_pending_booking(member_id, items, total_price, booked_at, billed_to_member_id)
         log.info("Buchung gespeichert: member=%s total=%s", member_id, total_price)
 
         # Sofortiger Sync-Versuch im Hintergrund-Thread
@@ -244,6 +251,21 @@ class SyncManager:
         if not self.online:
             return None
         return self._api.get_member_balance(member_id)
+
+    def get_billing_targets(self, member_id: str) -> list[dict]:
+        """
+        Billing-Targets (Sonderkonten) für ein Mitglied vom Server abrufen und cachen.
+        Blockierend – aus einem Hintergrund-Thread aufrufen.
+        """
+        if not self.online:
+            return []
+        try:
+            targets = self._api.fetch_billing_targets(member_id)
+            replace_billing_targets(member_id, targets)
+            return targets
+        except Exception as e:
+            log.debug("Billing-Targets-Abfrage fehlgeschlagen: %s", e)
+            return []
 
     def force_refresh(self) -> None:
         """Cache sofort neu laden (z.B. nach manuellem Anstoß aus der UI)."""
