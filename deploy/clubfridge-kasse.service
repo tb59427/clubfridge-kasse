@@ -29,5 +29,13 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=clubfridge-kasse
 
+# Sandboxing (konservativ: GPIO + Display benötigt Zugriff)
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
 [Install]
 WantedBy=graphical.target

@@ -94,6 +94,22 @@ fi
 
 log "Update verfügbar: ${BEFORE:0:8} → ${AFTER:0:8}"
 
+# ── Rollback-Funktion ────────────────────────────────────────────────────────
+rollback() {
+    warn "Rollback auf ${BEFORE:0:8} …"
+    git -C "${INSTALL_DIR}" reset --hard "${BEFORE}" --quiet
+    "${VENV}/bin/pip" install -e "${INSTALL_DIR}[pi]" --quiet 2>/dev/null || true
+    ensure_pi5_gpio
+    chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
+    systemctl restart "${SERVICE_NAME}@${SERVICE_USER}" || true
+    sleep 3
+    if systemctl is-active --quiet "${SERVICE_NAME}@${SERVICE_USER}"; then
+        warn "Rollback erfolgreich – Kasse läuft auf ${BEFORE:0:8}"
+    else
+        warn "Rollback fehlgeschlagen – manuelles Eingreifen erforderlich!"
+    fi
+}
+
 # Code aktualisieren
 git -C "${INSTALL_DIR}" reset --hard "origin/${BRANCH}" --quiet
 log "Code aktualisiert"
@@ -108,7 +124,12 @@ ensure_pi5_gpio
 # Berechtigungen sicherstellen
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 
-# Kassen-Service neustarten
+# Kassen-Service neustarten + Health-Check
 systemctl restart "${SERVICE_NAME}@${SERVICE_USER}"
-
-info "Update abgeschlossen. Version: ${AFTER:0:8}. Service neugestartet."
+sleep 3
+if systemctl is-active --quiet "${SERVICE_NAME}@${SERVICE_USER}"; then
+    info "Update abgeschlossen. Version: ${AFTER:0:8}. Service läuft."
+else
+    warn "Service-Start fehlgeschlagen nach Update! Automatischer Rollback …"
+    rollback
+fi
