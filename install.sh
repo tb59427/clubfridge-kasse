@@ -87,8 +87,8 @@ apt-get install -y --no-install-recommends \
     zlib1g-dev \
     libgstreamer1.0-dev \
     gstreamer1.0-plugins-base \
-    libgl1-mesa-dev \
-    libgles2-mesa-dev \
+    libgl-dev \
+    libgles-dev \
     libffi-dev \
     libssl-dev \
     xorg \
