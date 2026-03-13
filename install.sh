@@ -87,13 +87,19 @@ apt-get install -y --no-install-recommends \
     zlib1g-dev \
     libgstreamer1.0-dev \
     gstreamer1.0-plugins-base \
-    libgl-dev \
-    libgles-dev \
     libffi-dev \
     libssl-dev \
     xorg \
     xserver-xorg-video-fbdev \
     2>/dev/null
+
+# OpenGL-Pakete: neuere Debian-Versionen (Bookworm+) nutzen libgl-dev/libgles-dev,
+# ältere (Bullseye) nutzen libgl1-mesa-dev/libgles2-mesa-dev
+if apt-cache show libgl-dev &>/dev/null; then
+    apt-get install -y --no-install-recommends libgl-dev libgles-dev 2>/dev/null
+else
+    apt-get install -y --no-install-recommends libgl1-mesa-dev libgles2-mesa-dev 2>/dev/null
+fi
 
 info "System-Pakete installiert"
 
