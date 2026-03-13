@@ -91,14 +91,16 @@ apt-get install -y --no-install-recommends \
     libssl-dev \
     xorg \
     xserver-xorg-video-fbdev \
-    2>/dev/null
+    || error "System-Pakete konnten nicht installiert werden"
 
 # OpenGL-Pakete: neuere Debian-Versionen (Bookworm+) nutzen libgl-dev/libgles-dev,
 # ältere (Bullseye) nutzen libgl1-mesa-dev/libgles2-mesa-dev
 if apt-cache show libgl-dev &>/dev/null; then
-    apt-get install -y --no-install-recommends libgl-dev libgles-dev 2>/dev/null
+    apt-get install -y --no-install-recommends libgl-dev libgles-dev \
+        || error "OpenGL-Pakete (libgl-dev) konnten nicht installiert werden"
 else
-    apt-get install -y --no-install-recommends libgl1-mesa-dev libgles2-mesa-dev 2>/dev/null
+    apt-get install -y --no-install-recommends libgl1-mesa-dev libgles2-mesa-dev \
+        || error "OpenGL-Pakete (libgl1-mesa-dev) konnten nicht installiert werden"
 fi
 
 info "System-Pakete installiert"
