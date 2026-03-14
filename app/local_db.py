@@ -137,9 +137,42 @@ def get_session():
 # Hilfsfunktionen
 # ---------------------------------------------------------------------------
 
+def _rfid_hex_variant(token: str) -> str | None:
+    """V1-Kompatibilität: Dezimal → Hex-Konvertierung wie in clubfridge V1.
+
+    Manche RFID-Scanner liefern die UID als Dezimalzahl (z.B. '0003285347'),
+    die in V1 per hex() konvertiert wurde (→ '322163'). Admins haben teilweise
+    die aufgedruckte Hex-UID als RFID-Token gespeichert.
+    """
+    try:
+        n = int(token)
+        if n <= 0:
+            return None
+        return hex(n)[2:].upper()
+    except (ValueError, TypeError):
+        return None
+
+
 def find_member_by_rfid(rfid_token: str) -> CachedMember | None:
     with get_session() as db:
-        return db.query(CachedMember).filter_by(rfid_token=rfid_token).first()
+        # 1. Exakte Übereinstimmung (V2-Standard)
+        member = db.query(CachedMember).filter_by(rfid_token=rfid_token).first()
+        if member:
+            return member
+
+        # 2. Fallback: V1-Hex-Konvertierung (Dezimal → Hex)
+        #    Scanner liefert z.B. '0003285347' → hex '322163'
+        #    Gespeichert ist ggf. die aufgedruckte UID '3200322163'
+        #    → Suffix-Match: gespeicherter Token endet auf hex-Variante
+        hex_token = _rfid_hex_variant(rfid_token)
+        if hex_token and hex_token != rfid_token:
+            member = db.query(CachedMember).filter(
+                CachedMember.rfid_token.endswith(hex_token)
+            ).first()
+            if member:
+                return member
+
+        return None
 
 
 def find_product_by_barcode(barcode: str) -> CachedProduct | None:
