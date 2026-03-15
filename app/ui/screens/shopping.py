@@ -26,10 +26,11 @@ except Exception:
 from kivy.app import App
 from kivy.clock import Clock
 from kivy.lang import Builder
-from kivy.properties import BooleanProperty, ListProperty, NumericProperty, StringProperty
+from kivy.properties import BooleanProperty, NumericProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
+from kivy.uix.togglebutton import ToggleButton
 
 from app.local_db import CachedMember, CachedProduct, find_product_by_barcode, get_billing_targets
 
@@ -151,15 +152,13 @@ Builder.load_string("""
                 halign: 'left'
                 text_size: self.width, None
 
-        Spinner:
-            id: billing_spinner
-            text: 'Eigenes Konto'
-            values: root.billing_options
+        BoxLayout:
+            id: billing_bar
             size_hint_y: None
             height: 36 if root.has_billing_choice else 0
             opacity: 1 if root.has_billing_choice else 0
-            font_size: 16
-            on_text: root.on_billing_target_changed(self.text)
+            spacing: 6
+            padding: [4, 0, 4, 0]
 
         # ── Artikel-Liste ──────────────────────────────────────────────
         ScrollView:
@@ -278,7 +277,6 @@ class ShoppingScreen(Screen):
     cart_empty = BooleanProperty(True)
     error_text = StringProperty("")
     billing_info = StringProperty("")
-    billing_options = ListProperty([])
     has_billing_choice = BooleanProperty(False)
 
     status_text = StringProperty("• OFFLINE")
@@ -309,7 +307,7 @@ class ShoppingScreen(Screen):
         self._billing_targets = []
         self._selected_billing_target_id = None
         self.has_billing_choice = False
-        self.billing_options = []
+        self.ids.billing_bar.clear_widgets()
 
         # Automatische Weiterleitung (z.B. Eltern/Kind)
         if member.billed_to_id:
@@ -337,23 +335,49 @@ class ShoppingScreen(Screen):
             self._set_billing_targets(targets)
 
     def _set_billing_targets(self, targets: list[dict]) -> None:
-        self._billing_targets = targets
-        if targets:
-            self.billing_options = ["Eigenes Konto"] + [t["name"] for t in targets]
-            self.has_billing_choice = True
-        else:
-            self.billing_options = []
+        if not targets:
+            self._billing_targets = []
             self.has_billing_choice = False
+            self.ids.billing_bar.clear_widgets()
+            return
 
-    def on_billing_target_changed(self, text: str) -> None:
-        """Callback vom Spinner: Buchungskonto gewechselt."""
-        if text == "Eigenes Konto" or not text:
-            self._selected_billing_target_id = None
-        else:
-            for t in self._billing_targets:
-                if t["name"] == text:
-                    self._selected_billing_target_id = t["id"]
-                    break
+        # Vermeidung unnötiger Rebuilds (z.B. Background-Thread liefert gleiche Daten)
+        old_ids = [t["id"] for t in self._billing_targets]
+        new_ids = [t["id"] for t in targets]
+        if old_ids == new_ids and self.has_billing_choice:
+            return
+
+        self._billing_targets = targets
+        bar = self.ids.billing_bar
+        bar.clear_widgets()
+
+        # "Eigenes Konto" – vorausgewählt
+        btn_own = ToggleButton(
+            text="Eigenes Konto",
+            group="billing_target",
+            state="down",
+            allow_no_selection=False,
+            font_size=14,
+        )
+        btn_own.bind(state=lambda inst, st: self._on_billing_btn(st, None))
+        bar.add_widget(btn_own)
+
+        for t in targets:
+            btn = ToggleButton(
+                text=t["name"],
+                group="billing_target",
+                allow_no_selection=False,
+                font_size=14,
+            )
+            btn.bind(state=lambda inst, st, tid=t["id"]: self._on_billing_btn(st, tid))
+            bar.add_widget(btn)
+
+        self.has_billing_choice = True
+
+    def _on_billing_btn(self, state: str, target_id: str | None) -> None:
+        """Callback für ToggleButton: Buchungskonto gewechselt."""
+        if state == "down":
+            self._selected_billing_target_id = target_id
 
     def _end_session(self) -> None:
         self._member = None
