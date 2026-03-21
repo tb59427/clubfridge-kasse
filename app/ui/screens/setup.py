@@ -66,7 +66,18 @@ Builder.load_string("""
                 font_size: 15
                 color: 0.78, 0.78, 0.78, 1
                 size_hint_x: None
-                width: 190
+                width: 130
+                halign: 'right'
+                valign: 'middle'
+                text_size: self.width, self.height
+
+            Label:
+                text: root.net_status_text
+                markup: True
+                font_size: 12
+                color: 0.58, 0.58, 0.58, 1
+                size_hint_x: None
+                width: 200
                 halign: 'right'
                 valign: 'middle'
                 text_size: self.width, self.height
@@ -300,14 +311,19 @@ Builder.load_string("""
 class SetupScreen(Screen):
     status_text = StringProperty("")
     status_color = ListProperty([0.7, 0.7, 0.7, 1])
+    net_status_text = StringProperty("")
     server_url_text = StringProperty("https://app.adminv2.clubfridge.com")
     tenant_text = StringProperty("")
     token_text = StringProperty("")
     wifi_ssid_text = StringProperty("")
     wifi_pass_text = StringProperty("")
 
+    _net_check_event = None
+
     def on_enter(self) -> None:
         self._set_status("Bereit – bitte Daten aus dem Admin-UI eingeben.", color="normal")
+        self._update_net_status()
+        self._net_check_event = Clock.schedule_interval(lambda _dt: self._update_net_status(), 5)
         # Kurz nach Anzeige automatisch nach USB-Stick suchen (silent)
         Clock.schedule_once(lambda _dt: self._search_usb(silent=True), 0.8)
         # TAB-Navigation zwischen Eingabefeldern
@@ -317,6 +333,52 @@ class SetupScreen(Screen):
     def on_leave(self) -> None:
         from kivy.core.window import Window
         Window.unbind(on_key_down=self._on_key_down)
+        if self._net_check_event:
+            self._net_check_event.cancel()
+            self._net_check_event = None
+
+    def _update_net_status(self) -> None:
+        """Netzwerkstatus ermitteln und in der Statuszeile anzeigen."""
+        import subprocess
+        try:
+            result = subprocess.run(
+                ["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device"],
+                capture_output=True, text=True, timeout=3,
+            )
+            eth_up = False
+            wifi_up = False
+            wifi_ssid = ""
+            for line in result.stdout.strip().splitlines():
+                parts = line.split(":")
+                if len(parts) >= 3:
+                    dev, dtype, state = parts[0], parts[1], parts[2]
+                    if dtype == "ethernet" and state in ("verbunden", "connected"):
+                        eth_up = True
+                    elif dtype == "wifi" and state in ("verbunden", "connected"):
+                        wifi_up = True
+            if wifi_up:
+                # Aktive SSID ermitteln
+                ssid_result = subprocess.run(
+                    ["nmcli", "-t", "-f", "active,ssid", "dev", "wifi"],
+                    capture_output=True, text=True, timeout=3,
+                )
+                for line in ssid_result.stdout.strip().splitlines():
+                    if line.startswith("ja:") or line.startswith("yes:"):
+                        wifi_ssid = line.split(":", 1)[1]
+                        break
+
+            if eth_up and wifi_up:
+                txt = f"[color=55cc55]Ethernet + WiFi ({wifi_ssid})[/color]"
+            elif eth_up:
+                txt = "[color=55cc55]Ethernet verbunden[/color]"
+            elif wifi_up:
+                txt = f"[color=55cc55]WiFi: {wifi_ssid}[/color]"
+            else:
+                txt = "[color=ff5555]Kein Netzwerk[/color]"
+
+            self.net_status_text = txt
+        except Exception:
+            self.net_status_text = "[color=888888]Netzwerk: unbekannt[/color]"
 
     def _on_key_down(self, window, key, scancode, codepoint, modifiers) -> bool:
         if key == 9:  # TAB
@@ -400,22 +462,42 @@ class SetupScreen(Screen):
                 capture_output=True, timeout=5,
             )
 
-            # NetworkManager die neue Verbindung laden lassen
+            # WiFi-Radio sicherstellen (kann auf Pi-Image deaktiviert sein)
             subprocess.run(
-                ["nmcli", "connection", "reload"],
+                ["sudo", "nmcli", "radio", "wifi", "on"],
+                capture_output=True, timeout=5,
+            )
+
+            # Warten bis WiFi-Interface bereit ist (max 10s)
+            import time
+            for _ in range(10):
+                check = subprocess.run(
+                    ["nmcli", "-t", "-f", "TYPE,STATE", "device"],
+                    capture_output=True, text=True, timeout=3,
+                )
+                if "wifi:disconnected" in check.stdout or "wifi:getrennt" in check.stdout:
+                    break
+                time.sleep(1)
+
+            # NetworkManager die neue Verbindung laden lassen (braucht root)
+            subprocess.run(
+                ["sudo", "nmcli", "connection", "reload"],
                 capture_output=True, timeout=10,
             )
 
             # Verbindung aktivieren
+            Clock.schedule_once(
+                lambda _dt: self._set_status(f"WLAN '{ssid}' wird verbunden…", color="normal")
+            )
+
             result = subprocess.run(
-                ["nmcli", "connection", "up", ssid],
+                ["sudo", "nmcli", "connection", "up", ssid],
                 capture_output=True, text=True, timeout=30,
             )
             if result.returncode == 0:
                 log.info("WLAN verbunden: %s", ssid)
-                Clock.schedule_once(
-                    lambda _dt: self._set_status(f"WLAN verbunden: {ssid}", color="ok")
-                )
+                # Auf tatsächliche Netzwerkverbindung warten
+                self._wait_for_network(ssid)
             else:
                 err = result.stderr.strip() or result.stdout.strip() or "Unbekannter Fehler"
                 log.warning("WLAN-Aktivierung: %s", err)
@@ -435,6 +517,40 @@ class SetupScreen(Screen):
             Clock.schedule_once(
                 lambda _dt: self._set_status(f"WLAN-Fehler: {err_msg}", color="error")
             )
+
+    def _wait_for_network(self, ssid: str) -> None:
+        """Warte bis tatsächlich eine Netzwerkverbindung steht (max 15s)."""
+        import subprocess
+        import time
+        server_url = self.server_url_text.strip().rstrip("/") or "https://app.adminv2.clubfridge.com"
+        health_url = f"{server_url}/health"
+
+        for attempt in range(15):
+            try:
+                check = subprocess.run(
+                    ["curl", "-sf", "--max-time", "2", health_url],
+                    capture_output=True, timeout=5,
+                )
+                if check.returncode == 0:
+                    log.info("Netzwerk bereit nach %d Sekunden", attempt + 1)
+                    Clock.schedule_once(
+                        lambda _dt: self._set_status(
+                            f"WLAN verbunden: {ssid}", color="ok",
+                        )
+                    )
+                    return
+            except (subprocess.TimeoutExpired, OSError):
+                pass
+            time.sleep(1)
+
+        # Timeout — trotzdem Erfolg melden, WLAN ist gespeichert
+        log.warning("Netzwerk-Check Timeout nach 15s (WLAN gespeichert)")
+        Clock.schedule_once(
+            lambda _dt: self._set_status(
+                f"WLAN '{ssid}' verbunden – Server noch nicht erreichbar. Bitte kurz warten.",
+                color="ok",
+            )
+        )
 
     def try_usb(self) -> None:
         """Öffentlicher Button-Handler: USB-Stick suchen (mit Statusmeldung)."""

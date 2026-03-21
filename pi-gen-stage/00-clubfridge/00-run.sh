@@ -52,15 +52,26 @@ systemctl disable userconfig.service 2>/dev/null || true
 systemctl mask userconfig.service 2>/dev/null || true
 CHEOF
 
-# ── Display: Landscape + 180° Rotation (gängige Touchscreen-Gehäuse) ───────
+# ── WiFi: Radio aktivieren + Regulatory Domain DE ─────────────────────────
+
+on_chroot << CHEOF
+nmcli radio wifi on 2>/dev/null || true
+CHEOF
+
+# Regulatory Domain DE persistent setzen
+echo "REGDOMAIN=DE" > "${ROOTFS_DIR}/etc/default/crda" 2>/dev/null || true
+mkdir -p "${ROOTFS_DIR}/etc/default"
+echo 'REGDOMAIN=DE' > "${ROOTFS_DIR}/etc/default/crda"
+
+# ── Display-Konfiguration ──────────────────────────────────────────────────
 
 BOOT_CONFIG="${ROOTFS_DIR}/boot/firmware/config.txt"
 if [ -f "${BOOT_CONFIG}" ]; then
+    # I2C aktivieren (Touch Display 2 Goodix Controller)
+    sed -i 's/^#dtparam=i2c_arm=on/dtparam=i2c_arm=on/' "${BOOT_CONFIG}"
+
     echo "" >> "${BOOT_CONFIG}"
-    echo "# Clubfridge: Display-Rotation 180° für Touchscreen-Gehäuse (KMS-kompatibel)" >> "${BOOT_CONFIG}"
-    echo "# DSI Touch Display 180°" >> "${BOOT_CONFIG}"
-    echo "dtoverlay=vc4-kms-dsi-7inch,invx,invy" >> "${BOOT_CONFIG}"
-    echo "# HDMI Display 180°" >> "${BOOT_CONFIG}"
+    echo "# Clubfridge: HDMI Display 180° Rotation" >> "${BOOT_CONFIG}"
     echo "display_hdmi_rotate=2" >> "${BOOT_CONFIG}"
 fi
 
