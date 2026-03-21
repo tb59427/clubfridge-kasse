@@ -11,18 +11,25 @@ os.environ.setdefault("KIVY_NO_ENV_CONFIG", "1")
 
 from app.config import settings  # noqa: E402
 
+
 from kivy.config import Config  # noqa: E402
+
+import sys
 
 Config.set("kivy", "keyboard_mode", "system")
 Config.set("graphics", "resizable", "0")
+Config.set("graphics", "width", str(settings.window_width))
+Config.set("graphics", "height", str(settings.window_height))
 
 from app.provision import is_configured  # noqa: E402
 
-if settings.fullscreen or not is_configured():
-    Config.set("graphics", "fullscreen", "auto")
-else:
-    Config.set("graphics", "width", str(settings.window_width))
-    Config.set("graphics", "height", str(settings.window_height))
+# Auf dem Pi (Linux): Fullscreen + Rotation für Touchscreen-Gehäuse.
+# Auf Mac/Windows: normales Fenster ohne Rotation (Entwicklung).
+if sys.platform == "linux":
+    if settings.display_rotation and not os.path.exists("/tmp/.X11-unix/X0"):
+        Config.set("graphics", "rotation", str(settings.display_rotation))
+    if settings.fullscreen or not is_configured():
+        Config.set("graphics", "fullscreen", "auto")
 
 # Kein Multi-Touch-Emulation mit der Maus (stört auf dem Touchscreen)
 Config.set("input", "mouse", "mouse,disable_multitouch")

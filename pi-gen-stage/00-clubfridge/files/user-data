@@ -1,0 +1,20 @@
+#cloud-config
+hostname: clubfridge
+manage_etc_hosts: true
+
+users:
+  - name: pi
+    plain_text_passwd: "clubfridge"
+    lock_passwd: false
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: [adm, dialout, cdrom, sudo, audio, video, plugdev, games, users, input, netdev, gpio, i2c, spi]
+
+ssh_pwauth: true
+
+package_update: false
+package_upgrade: false
+
+runcmd:
+  - systemctl disable piwiz 2>/dev/null || true
+  - rm -f /etc/xdg/autostart/piwiz.desktop 2>/dev/null || true

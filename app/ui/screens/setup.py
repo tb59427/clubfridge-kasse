@@ -29,9 +29,8 @@ log = logging.getLogger(__name__)
 Builder.load_string("""
 #:kivy 2.3
 
-# Kompaktes Layout für 7" RPi-Touchscreen (800×480).
-# Gesamte feste Höhe: 356px → ≈62px flex-Spacer oben und unten.
-# Kein ScrollView – alle Elemente passen auf den Bildschirm.
+# Kompaktes 2-Spalten-Layout für 7" RPi-Touchscreen (800×480).
+# Links: WLAN-Einrichtung, Rechts: Kassen-Einrichtung.
 
 <SetupScreen>:
     canvas.before:
@@ -45,10 +44,10 @@ Builder.load_string("""
         orientation: 'vertical'
         padding: [20, 10, 20, 10]
 
-        # ── Header: Wordmark links, Titel rechts ───────────────────────
+        # ── Header ────────────────────────────────────────────────────
         BoxLayout:
             size_hint_y: None
-            height: 34
+            height: 30
 
             Label:
                 text: '[color=ffffff]club[/color][color=ff6b35][b]fridge[/b][/color]'
@@ -72,137 +71,219 @@ Builder.load_string("""
                 valign: 'middle'
                 text_size: self.width, self.height
 
-        # ── Hinweis ────────────────────────────────────────────────────
-        Label:
-            text: 'Daten aus dem Admin-UI eingeben – oder USB-Stick mit config.json verwenden.'
-            font_size: 12
-            color: 0.48, 0.48, 0.48, 1
-            size_hint_y: None
-            height: 16
-            halign: 'left'
-            text_size: self.width, None
-
-        # ── Flex-Spacer oben (zentriert Felder vertikal) ───────────────
-        Widget:
+        # ── 2-Spalten-Bereich ─────────────────────────────────────────
+        BoxLayout:
+            orientation: 'horizontal'
+            spacing: 20
             size_hint_y: 1
 
-        # ── Eingabefelder ──────────────────────────────────────────────
-        BoxLayout:
-            orientation: 'vertical'
-            size_hint_y: None
-            height: 214
-            spacing: 8
-
-            # Server-URL
+            # ── Linke Spalte: WLAN ────────────────────────────────────
             BoxLayout:
                 orientation: 'vertical'
-                size_hint_y: None
-                height: 60
-                spacing: 3
+                size_hint_x: 0.38
+                padding: [0, 6, 0, 0]
+
                 Label:
-                    text: 'Server-URL'
-                    font_size: 12
+                    text: '[b]WLAN[/b]'
+                    markup: True
+                    font_size: 14
                     color: 0.58, 0.58, 0.58, 1
                     size_hint_y: None
-                    height: 15
+                    height: 22
+                    halign: 'left'
+                    text_size: self.width, None
+
+                # SSID
+                Label:
+                    text: 'Netzwerkname (SSID)'
+                    font_size: 11
+                    color: 0.48, 0.48, 0.48, 1
+                    size_hint_y: None
+                    height: 16
+                    halign: 'left'
+                    text_size: self.width, None
+                TextInput:
+                    id: wifi_ssid_input
+                    text: root.wifi_ssid_text
+                    hint_text: 'MeinWLAN'
+                    font_size: 15
+                    size_hint_y: None
+                    height: 38
+                    multiline: False
+                    background_color: 0.12, 0.12, 0.12, 1
+                    foreground_color: 0.92, 0.92, 0.92, 1
+                    cursor_color: 1.0, 0.42, 0.208, 1
+                    padding: [10, 8, 10, 0]
+                    on_text: root.wifi_ssid_text = self.text
+
+                Widget:
+                    size_hint_y: None
+                    height: 4
+
+                # Passwort
+                Label:
+                    text: 'WLAN-Passwort'
+                    font_size: 11
+                    color: 0.48, 0.48, 0.48, 1
+                    size_hint_y: None
+                    height: 16
+                    halign: 'left'
+                    text_size: self.width, None
+                TextInput:
+                    id: wifi_pass_input
+                    text: root.wifi_pass_text
+                    hint_text: 'Passwort'
+                    font_size: 15
+                    size_hint_y: None
+                    height: 38
+                    multiline: False
+                    password: True
+                    background_color: 0.12, 0.12, 0.12, 1
+                    foreground_color: 0.92, 0.92, 0.92, 1
+                    cursor_color: 1.0, 0.42, 0.208, 1
+                    padding: [10, 8, 10, 0]
+                    on_text: root.wifi_pass_text = self.text
+
+                Widget:
+                    size_hint_y: None
+                    height: 8
+
+                Button:
+                    text: 'WLAN verbinden'
+                    font_size: 14
+                    size_hint_y: None
+                    height: 40
+                    background_normal: ''
+                    background_color: 0.18, 0.26, 0.42, 1
+                    on_press: root.connect_wifi()
+
+                Widget:
+                    size_hint_y: 1
+
+                Button:
+                    text: 'USB-Stick suchen'
+                    font_size: 13
+                    size_hint_y: None
+                    height: 36
+                    background_normal: ''
+                    background_color: 0.15, 0.15, 0.15, 1
+                    on_press: root.try_usb()
+
+            # ── Trennlinie ────────────────────────────────────────────
+            Widget:
+                size_hint_x: None
+                width: 1
+                canvas:
+                    Color:
+                        rgba: 0.25, 0.25, 0.25, 1
+                    Rectangle:
+                        pos: self.pos
+                        size: self.size
+
+            # ── Rechte Spalte: Kassen-Einrichtung ─────────────────────
+            BoxLayout:
+                orientation: 'vertical'
+                size_hint_x: 0.62
+                padding: [0, 6, 0, 0]
+
+                Label:
+                    text: '[b]Kasseneinrichtung[/b]'
+                    markup: True
+                    font_size: 14
+                    color: 0.58, 0.58, 0.58, 1
+                    size_hint_y: None
+                    height: 22
+                    halign: 'left'
+                    text_size: self.width, None
+
+                # Server-URL
+                Label:
+                    text: 'Server-URL'
+                    font_size: 11
+                    color: 0.48, 0.48, 0.48, 1
+                    size_hint_y: None
+                    height: 16
                     halign: 'left'
                     text_size: self.width, None
                 TextInput:
                     id: server_url_input
                     text: root.server_url_text
-                    hint_text: 'https://api.clubfridge.de'
-                    font_size: 17
+                    font_size: 15
                     size_hint_y: None
-                    height: 42
+                    height: 38
                     multiline: False
                     background_color: 0.12, 0.12, 0.12, 1
                     foreground_color: 0.92, 0.92, 0.92, 1
                     cursor_color: 1.0, 0.42, 0.208, 1
-                    padding: [10, 10, 10, 0]
+                    padding: [10, 8, 10, 0]
                     on_text: root.server_url_text = self.text
 
-            # Tenant-ID
-            BoxLayout:
-                orientation: 'vertical'
-                size_hint_y: None
-                height: 60
-                spacing: 3
+                Widget:
+                    size_hint_y: None
+                    height: 4
+
+                # Tenant-ID
                 Label:
                     text: 'Tenant-ID (Verein)'
-                    font_size: 12
-                    color: 0.58, 0.58, 0.58, 1
+                    font_size: 11
+                    color: 0.48, 0.48, 0.48, 1
                     size_hint_y: None
-                    height: 15
+                    height: 16
                     halign: 'left'
                     text_size: self.width, None
                 TextInput:
                     id: tenant_input
                     text: root.tenant_text
                     hint_text: 'meinverein'
-                    font_size: 17
+                    font_size: 15
                     size_hint_y: None
-                    height: 42
+                    height: 38
                     multiline: False
                     background_color: 0.12, 0.12, 0.12, 1
                     foreground_color: 0.92, 0.92, 0.92, 1
                     cursor_color: 1.0, 0.42, 0.208, 1
-                    padding: [10, 10, 10, 0]
+                    padding: [10, 8, 10, 0]
                     on_text: root.tenant_text = self.text
 
-            # Einrichtungscode (größere Schrift für Touchscreen-Eingabe)
-            BoxLayout:
-                orientation: 'vertical'
-                size_hint_y: None
-                height: 78
-                spacing: 3
+                Widget:
+                    size_hint_y: None
+                    height: 4
+
+                # Einrichtungscode
                 Label:
                     text: 'Einrichtungscode'
-                    font_size: 12
-                    color: 0.58, 0.58, 0.58, 1
+                    font_size: 11
+                    color: 0.48, 0.48, 0.48, 1
                     size_hint_y: None
-                    height: 15
+                    height: 16
                     halign: 'left'
                     text_size: self.width, None
                 TextInput:
                     id: token_input
                     text: root.token_text
                     hint_text: 'XXXX-XXXX-XXXX'
-                    font_size: 24
+                    font_size: 22
                     size_hint_y: None
-                    height: 60
+                    height: 52
                     multiline: False
                     background_color: 0.12, 0.12, 0.12, 1
                     foreground_color: 0.92, 0.92, 0.92, 1
                     cursor_color: 1.0, 0.42, 0.208, 1
-                    padding: [10, 14, 10, 0]
+                    padding: [10, 12, 10, 0]
                     on_text: root.token_text = self.text
 
-        # ── Flex-Spacer unten ──────────────────────────────────────────
-        Widget:
-            size_hint_y: 1
+                Widget:
+                    size_hint_y: 1
 
-        # ── Buttons ────────────────────────────────────────────────────
-        BoxLayout:
-            size_hint_y: None
-            height: 50
-            spacing: 12
-
-            Button:
-                text: 'USB-Stick suchen'
-                font_size: 15
-                size_hint_x: 0.38
-                background_normal: ''
-                background_color: 0.18, 0.26, 0.42, 1
-                on_press: root.try_usb()
-
-            Button:
-                text: 'Einrichten'
-                font_size: 18
-                bold: True
-                size_hint_x: 0.62
-                background_normal: ''
-                background_color: 1.0, 0.42, 0.208, 1
-                on_press: root.do_provision()
+                Button:
+                    text: 'Einrichten'
+                    font_size: 18
+                    bold: True
+                    size_hint_y: None
+                    height: 46
+                    background_normal: ''
+                    background_color: 1.0, 0.42, 0.208, 1
+                    on_press: root.do_provision()
 
         # ── Statuszeile ────────────────────────────────────────────────
         Label:
@@ -219,14 +300,141 @@ Builder.load_string("""
 class SetupScreen(Screen):
     status_text = StringProperty("")
     status_color = ListProperty([0.7, 0.7, 0.7, 1])
-    server_url_text = StringProperty("")
+    server_url_text = StringProperty("https://app.adminv2.clubfridge.com")
     tenant_text = StringProperty("")
     token_text = StringProperty("")
+    wifi_ssid_text = StringProperty("")
+    wifi_pass_text = StringProperty("")
 
     def on_enter(self) -> None:
         self._set_status("Bereit – bitte Daten aus dem Admin-UI eingeben.", color="normal")
         # Kurz nach Anzeige automatisch nach USB-Stick suchen (silent)
         Clock.schedule_once(lambda _dt: self._search_usb(silent=True), 0.8)
+        # TAB-Navigation zwischen Eingabefeldern
+        from kivy.core.window import Window
+        Window.bind(on_key_down=self._on_key_down)
+
+    def on_leave(self) -> None:
+        from kivy.core.window import Window
+        Window.unbind(on_key_down=self._on_key_down)
+
+    def _on_key_down(self, window, key, scancode, codepoint, modifiers) -> bool:
+        if key == 9:  # TAB
+            fields = [
+                self.ids.wifi_ssid_input,
+                self.ids.wifi_pass_input,
+                self.ids.server_url_input,
+                self.ids.tenant_input,
+                self.ids.token_input,
+            ]
+            # Finde aktuelles Feld und springe zum nächsten
+            for i, field in enumerate(fields):
+                if field.focus:
+                    next_field = fields[(i + 1) % len(fields)]
+                    field.focus = False
+                    next_field.focus = True
+                    return True
+            # Kein Feld fokussiert → erstes Feld aktivieren
+            fields[0].focus = True
+            return True
+        return False
+
+    def connect_wifi(self) -> None:
+        """WLAN-Verbindung über nmcli herstellen."""
+        ssid = self.wifi_ssid_text.strip()
+        password = self.wifi_pass_text.strip()
+
+        if not ssid:
+            self._set_status("Bitte WLAN-Name (SSID) eingeben.", color="error")
+            return
+        if not password:
+            self._set_status("Bitte WLAN-Passwort eingeben.", color="error")
+            return
+
+        self._set_status(f"Verbinde mit {ssid}…", color="normal")
+        threading.Thread(
+            target=self._connect_wifi_bg,
+            args=(ssid, password),
+            daemon=True,
+        ).start()
+
+    def _connect_wifi_bg(self, ssid: str, password: str) -> None:
+        """WLAN-Verbindung im Hintergrund-Thread."""
+        import subprocess
+        try:
+            # NetworkManager Connection-Datei direkt schreiben (braucht keine PolicyKit-Rechte)
+            nm_dir = "/etc/NetworkManager/system-connections"
+            nm_file = f"{nm_dir}/{ssid}.nmconnection"
+            nm_content = (
+                f"[connection]\n"
+                f"id={ssid}\n"
+                f"type=wifi\n"
+                f"autoconnect=true\n"
+                f"\n"
+                f"[wifi]\n"
+                f"ssid={ssid}\n"
+                f"mode=infrastructure\n"
+                f"\n"
+                f"[wifi-security]\n"
+                f"key-mgmt=wpa-psk\n"
+                f"psk={password}\n"
+                f"\n"
+                f"[ipv4]\n"
+                f"method=auto\n"
+                f"\n"
+                f"[ipv6]\n"
+                f"method=auto\n"
+            )
+
+            # Schreiben via tee (braucht keine elevated privileges im Pi-Image,
+            # da der pi-User über sudoers NOPASSWD hat)
+            write_result = subprocess.run(
+                ["sudo", "tee", nm_file],
+                input=nm_content, capture_output=True, text=True, timeout=5,
+            )
+            if write_result.returncode != 0:
+                raise RuntimeError(f"Konnte {nm_file} nicht schreiben")
+
+            subprocess.run(
+                ["sudo", "chmod", "600", nm_file],
+                capture_output=True, timeout=5,
+            )
+
+            # NetworkManager die neue Verbindung laden lassen
+            subprocess.run(
+                ["nmcli", "connection", "reload"],
+                capture_output=True, timeout=10,
+            )
+
+            # Verbindung aktivieren
+            result = subprocess.run(
+                ["nmcli", "connection", "up", ssid],
+                capture_output=True, text=True, timeout=30,
+            )
+            if result.returncode == 0:
+                log.info("WLAN verbunden: %s", ssid)
+                Clock.schedule_once(
+                    lambda _dt: self._set_status(f"WLAN verbunden: {ssid}", color="ok")
+                )
+            else:
+                err = result.stderr.strip() or result.stdout.strip() or "Unbekannter Fehler"
+                log.warning("WLAN-Aktivierung: %s", err)
+                Clock.schedule_once(
+                    lambda _dt: self._set_status(
+                        f"WLAN '{ssid}' gespeichert (wird beim nächsten Start genutzt).",
+                        color="ok",
+                    )
+                )
+        except subprocess.TimeoutExpired:
+            Clock.schedule_once(
+                lambda _dt: self._set_status("WLAN-Timeout – bitte SSID und Passwort prüfen.", color="error")
+            )
+        except Exception as e:
+            err_msg = str(e)
+            log.error("WLAN-Fehler: %s", err_msg)
+            Clock.schedule_once(
+                lambda _dt: self._set_status(f"WLAN-Fehler: {err_msg}", color="error")
+            )
 
     def try_usb(self) -> None:
         """Öffentlicher Button-Handler: USB-Stick suchen (mit Statusmeldung)."""

@@ -234,9 +234,9 @@ class IdleScreen(Screen):
         app.lock.open()
 
         # Zum Shopping-Screen wechseln
-        shopping = app.root.get_screen("shopping")
+        shopping = app.screen_manager.get_screen("shopping")
         shopping.start_session(member)
-        app.root.current = "shopping"
+        app.screen_manager.current = "shopping"
 
         # Saldo und Billing-Targets im Hintergrund abrufen (nicht blockierend).
         seq = shopping._session_seq  # Guard: nur setzen wenn Session noch aktuell

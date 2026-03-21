@@ -226,7 +226,7 @@ Builder.load_string("""
                 text: 'Abbrechen'
                 font_size: 28
                 background_color: 0.85, 0.22, 0.22, 1
-                on_release: root.cancel()
+                on_press: root.cancel()
 
             Button:
                 text: 'Kaufen'
@@ -237,7 +237,7 @@ Builder.load_string("""
                 background_down: ''
                 background_color: (0.06, 0.50, 0.18, 1) if self.state == 'down' else (0.08, 0.65, 0.24, 1) if not self.disabled else (0.18, 0.30, 0.20, 0.55)
                 disabled: root.cart_empty
-                on_release: root.confirm_purchase()
+                on_press: root.confirm_purchase()
 
         # ── Versionszeile ──────────────────────────────────────────────
         Label:
@@ -384,7 +384,7 @@ class ShoppingScreen(Screen):
         self._cart = []
         app = App.get_running_app()
         app.lock.close()
-        app.root.current = "idle"
+        app.screen_manager.current = "idle"
 
     # ------------------------------------------------------------------
     # Lifecycle
