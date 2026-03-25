@@ -27,7 +27,20 @@ from app.provision import is_configured  # noqa: E402
 # Auf Mac/Windows: normales Fenster ohne Rotation (Entwicklung).
 if sys.platform == "linux":
     if settings.display_rotation and not os.path.exists("/tmp/.X11-unix/X0"):
-        Config.set("graphics", "rotation", str(settings.display_rotation))
+        # Nur bei Portrait-Displays (H > W) rotieren. Landscape-Displays
+        # (z.B. Touch Display 1, 800x480) brauchen keine Kivy-Rotation.
+        _need_rotation = True
+        try:
+            _fb_size = open("/sys/class/graphics/fb0/virtual_size").read().strip()
+            _fb_w, _fb_h = (int(x) for x in _fb_size.split(","))
+            if _fb_h <= _fb_w:
+                # Landscape-Display (z.B. Touch Display 1): 180° für kopfüber montierte Gehäuse
+                Config.set("graphics", "rotation", "180")
+                _need_rotation = False
+        except Exception:
+            pass  # Im Zweifel rotieren
+        if _need_rotation:
+            Config.set("graphics", "rotation", str(settings.display_rotation))
     if settings.fullscreen or not is_configured():
         Config.set("graphics", "fullscreen", "auto")
 

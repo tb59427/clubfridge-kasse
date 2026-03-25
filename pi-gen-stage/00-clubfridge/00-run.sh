@@ -85,7 +85,14 @@ Before=getty@tty1.service
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -c 'echo 1 > /sys/class/graphics/fbcon/rotate_all'
+ExecStart=/bin/bash -c '\
+  SIZE=$(cat /sys/class/graphics/fb0/virtual_size 2>/dev/null || echo "0,0");\
+  W=${SIZE%%,*}; H=${SIZE##*,};\
+  if [ "$H" -gt "$W" ] 2>/dev/null; then\
+    echo 1 > /sys/class/graphics/fbcon/rotate_all;\
+  else\
+    echo 2 > /sys/class/graphics/fbcon/rotate_all;\
+  fi'
 
 [Install]
 WantedBy=sysinit.target
