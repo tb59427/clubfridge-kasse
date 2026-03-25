@@ -47,6 +47,10 @@ if sys.platform == "linux":
 # Kein Multi-Touch-Emulation mit der Maus (stört auf dem Touchscreen)
 Config.set("input", "mouse", "mouse,disable_multitouch")
 
+# Mauszeiger auf Touchscreens ausblenden (nur Linux/Pi)
+if sys.platform == "linux":
+    Config.set("graphics", "show_cursor", "0")
+
 from app.ui.app import KasseApp  # noqa: E402
 
 if __name__ == "__main__":
