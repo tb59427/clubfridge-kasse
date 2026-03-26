@@ -26,23 +26,21 @@ from app.provision import is_configured  # noqa: E402
 # Auf dem Pi (Linux): Fullscreen + Rotation für Touchscreen-Gehäuse.
 # Auf Mac/Windows: normales Fenster ohne Rotation (Entwicklung).
 if sys.platform == "linux":
-    if settings.display_rotation and not os.path.exists("/tmp/.X11-unix/X0"):
-        # Nur bei Portrait-Displays (H > W) rotieren. Landscape-Displays
-        # (z.B. Touch Display 1, 800x480) brauchen keine Kivy-Rotation.
-        _need_rotation = True
+    if settings.display_rotation:
+        # Display-Rotation basierend auf nativer Auflösung:
+        # Portrait (H > W, z.B. Touch Display 2): 270° → Landscape
+        # Landscape (W >= H, z.B. Touch Display 1): 180° → kopfüber montiertes Gehäuse
+        _rotation = str(settings.display_rotation)  # Default: 270
         try:
             _fb_size = open("/sys/class/graphics/fb0/virtual_size").read().strip()
             _fb_w, _fb_h = (int(x) for x in _fb_size.split(","))
             if _fb_h <= _fb_w:
-                # Landscape-Display (z.B. Touch Display 1): 180° für kopfüber montierte Gehäuse
-                Config.set("graphics", "rotation", "180")
-                _need_rotation = False
+                _rotation = "180"  # Landscape-Display, nur 180° drehen
         except Exception:
-            pass  # Im Zweifel rotieren
-        if _need_rotation:
-            Config.set("graphics", "rotation", str(settings.display_rotation))
-    if settings.fullscreen or not is_configured():
-        Config.set("graphics", "fullscreen", "auto")
+            pass
+        Config.set("graphics", "rotation", _rotation)
+    # Auf Linux immer Fullscreen (Pi-Touchscreen)
+    Config.set("graphics", "fullscreen", "auto")
 
 # Kein Multi-Touch-Emulation mit der Maus (stört auf dem Touchscreen)
 Config.set("input", "mouse", "mouse,disable_multitouch")
