@@ -12,7 +12,9 @@
 
 INSTALL_DIR="/opt/clubfridge/kasse"
 SERVICE_USER="pi"
-VARIANT="${CLUBFRIDGE_VARIANT:-pi5}"
+# Variante wird als Datei übergeben (env vars gehen nicht in Docker-Build)
+VARIANT_FILE="$(dirname "$0")/VARIANT"
+VARIANT="$(cat "$VARIANT_FILE" 2>/dev/null || echo "pi5")"
 
 echo "══ Clubfridge Build-Stage: Variante=${VARIANT} ══"
 

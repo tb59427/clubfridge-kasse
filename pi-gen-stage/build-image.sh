@@ -93,14 +93,8 @@ EOF
     touch "${PIGEN_DIR}/stage4/SKIP" "${PIGEN_DIR}/stage4/SKIP_IMAGES"
     touch "${PIGEN_DIR}/stage5/SKIP" "${PIGEN_DIR}/stage5/SKIP_IMAGES"
 
-    # ── Varianten-spezifische Anpassungen ──────────────────────────────
-    if [[ "$VARIANT" == "pi3" ]]; then
-        # Bookworm/Pi3: fbcon=rotate:2 in cmdline.txt (Landscape 180°)
-        # wird im 00-run.sh per sed eingefügt wenn cmdline.txt vorhanden
-        export CLUBFRIDGE_VARIANT="pi3"
-    else
-        export CLUBFRIDGE_VARIANT="pi5"
-    fi
+    # ── Variante als Datei übergeben (env vars gehen nicht in Docker) ──
+    echo "$VARIANT" > "${PIGEN_DIR}/stage3/00-clubfridge/VARIANT"
 
     # ── Bauen ──────────────────────────────────────────────────────────
     echo ""
