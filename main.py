@@ -30,7 +30,8 @@ if sys.platform == "linux":
         # Rotation basierend auf nativer Auflösung (für offizielle Pi Touch Displays).
         # Portrait (H > W, z.B. Touch Display 2): 270° → Landscape
         # Landscape (W >= H, z.B. Touch Display 1): 180° → kopfüber montiertes Gehäuse
-        # Bei 3rd-Party-Displays: DISPLAY_ROTATION=0 in .env setzen.
+        # Bei 3rd-Party-Displays die schon richtig orientiert sind:
+        # DISPLAY_ROTATION=0 in .env setzen.
         _rotation = str(settings.display_rotation)  # Default: 270
         try:
             _fb_size = open("/sys/class/graphics/fb0/virtual_size").read().strip()

@@ -162,4 +162,5 @@ exec sleep infinity
 XEOF
     chmod +x "${ROOTFS_DIR}/home/${SERVICE_USER}/.xinitrc"
     chown 1000:1000 "${ROOTFS_DIR}/home/${SERVICE_USER}/.xinitrc"
+
 fi
