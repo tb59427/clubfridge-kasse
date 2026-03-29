@@ -27,15 +27,16 @@ from app.provision import is_configured  # noqa: E402
 # Auf Mac/Windows: normales Fenster ohne Rotation (Entwicklung).
 if sys.platform == "linux":
     if settings.display_rotation:
-        # Display-Rotation basierend auf nativer Auflösung:
+        # Rotation basierend auf nativer Auflösung (für offizielle Pi Touch Displays).
         # Portrait (H > W, z.B. Touch Display 2): 270° → Landscape
         # Landscape (W >= H, z.B. Touch Display 1): 180° → kopfüber montiertes Gehäuse
+        # Bei 3rd-Party-Displays: DISPLAY_ROTATION=0 in .env setzen.
         _rotation = str(settings.display_rotation)  # Default: 270
         try:
             _fb_size = open("/sys/class/graphics/fb0/virtual_size").read().strip()
             _fb_w, _fb_h = (int(x) for x in _fb_size.split(","))
             if _fb_h <= _fb_w:
-                _rotation = "180"  # Landscape-Display, nur 180° drehen
+                _rotation = "180"
         except Exception:
             pass
         Config.set("graphics", "rotation", _rotation)
