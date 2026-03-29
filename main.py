@@ -21,26 +21,36 @@ Config.set("graphics", "resizable", "0")
 Config.set("graphics", "width", str(settings.window_width))
 Config.set("graphics", "height", str(settings.window_height))
 
+from app.display_rotation import get_saved_rotation, has_saved_rotation  # noqa: E402
 from app.provision import is_configured  # noqa: E402
 
 # Auf dem Pi (Linux): Fullscreen + Rotation für Touchscreen-Gehäuse.
 # Auf Mac/Windows: normales Fenster ohne Rotation (Entwicklung).
 if sys.platform == "linux":
-    if settings.display_rotation:
-        # Rotation basierend auf nativer Auflösung (für offizielle Pi Touch Displays).
-        # Portrait (H > W, z.B. Touch Display 2): 270° → Landscape
-        # Landscape (W >= H, z.B. Touch Display 1): 180° → kopfüber montiertes Gehäuse
-        # Bei 3rd-Party-Displays die schon richtig orientiert sind:
-        # DISPLAY_ROTATION=0 in .env setzen.
-        _rotation = str(settings.display_rotation)  # Default: 270
-        try:
-            _fb_size = open("/sys/class/graphics/fb0/virtual_size").read().strip()
-            _fb_w, _fb_h = (int(x) for x in _fb_size.split(","))
-            if _fb_h <= _fb_w:
-                _rotation = "180"
-        except Exception:
-            pass
-        Config.set("graphics", "rotation", _rotation)
+    _saved = get_saved_rotation()
+    if _saved is not None:
+        # Explizit gespeicherte Rotation (vom Display-Drehen-Dialog oder .display_rotation)
+        if _saved != 0:
+            Config.set("graphics", "rotation", str(_saved))
+    elif has_saved_rotation():
+        # Datei existiert mit Wert 0 → keine Rotation
+        pass
+    elif is_configured():
+        # Bereits eingerichtete Kasse ohne gespeicherte Rotation (Bestandsinstallation):
+        # Auto-detect wie bisher, damit bestehende Installationen weiter funktionieren.
+        if settings.display_rotation:
+            _rotation = str(settings.display_rotation)
+            try:
+                _fb_size = open("/sys/class/graphics/fb0/virtual_size").read().strip()
+                _fb_w, _fb_h = (int(x) for x in _fb_size.split(","))
+                if _fb_h <= _fb_w:
+                    _rotation = "180"
+            except Exception:
+                pass
+            Config.set("graphics", "rotation", _rotation)
+    # else: Erster Start, keine Konfiguration → keine Rotation.
+    #       Der Display-Drehen-Dialog im SetupScreen übernimmt.
+
     # Auf Linux immer Fullscreen (Pi-Touchscreen)
     Config.set("graphics", "fullscreen", "auto")
 
