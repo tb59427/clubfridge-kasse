@@ -206,6 +206,7 @@ class SyncManager:
         payload = []
         for b in pending:
             entry: dict = {
+                "idempotency_key": b.id,
                 "member_id": b.member_id,
                 "booked_at": b.booked_at.isoformat(),
                 "items": b.items,

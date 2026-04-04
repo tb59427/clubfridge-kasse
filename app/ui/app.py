@@ -109,17 +109,6 @@ class KasseApp(App):
         # ── Tastatur-Shortcuts (Entwicklungsmodus) ─────────────────────
         Window.bind(on_key_down=self._on_key_down)
 
-        # ── Display-Rotation: beim allerersten Start ─────────────────
-        from app.display_rotation import has_saved_rotation
-        if not is_configured() and not has_saved_rotation():
-            import sys
-            if sys.platform == "linux":
-                log.info("Keine Rotation gespeichert – Display-Drehen-Dialog wird angezeigt")
-                from app.ui.screens.rotation import RotationScreen
-                sm = ScreenManager()
-                sm.add_widget(RotationScreen(name="rotation"))
-                return _wrap_scaled(sm)
-
         # ── Setup-Modus: Kasse noch nicht konfiguriert ─────────────────
         if not is_configured():
             log.info("Keine Konfiguration gefunden – Einrichtungs-Assistent wird gestartet")
@@ -228,6 +217,7 @@ class KasseApp(App):
     # ------------------------------------------------------------------
 
     def _on_key_down(self, window, key, scancode, codepoint, modifiers) -> bool:
+        log.debug("KEY: key=%s scancode=%s codepoint=%r screen=%s", key, scancode, codepoint, self.screen_manager.current)
         current_screen = self.screen_manager.get_screen(self.screen_manager.current)
         if hasattr(current_screen, "on_key_down"):
             return current_screen.on_key_down(window, key, scancode, codepoint, modifiers)

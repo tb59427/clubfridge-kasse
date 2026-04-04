@@ -30,6 +30,15 @@ def save_rotation(rotation: int) -> None:
     log.info("Display-Rotation gespeichert: %d°", rotation)
 
 
+_CONFIRMED_FILE = Path(__file__).parent.parent / ".display_rotation_confirmed"
+
+
 def has_saved_rotation() -> bool:
-    """True wenn eine Rotation explizit gewählt wurde."""
-    return _ROTATION_FILE.exists()
+    """True wenn eine Rotation explizit vom User bestätigt wurde (Enter)."""
+    return _CONFIRMED_FILE.exists()
+
+
+def confirm_rotation() -> None:
+    """Markiert die Rotation als bestätigt (Dialog wird nicht mehr angezeigt)."""
+    _CONFIRMED_FILE.write_text("ok")
+    log.info("Display-Rotation bestätigt")

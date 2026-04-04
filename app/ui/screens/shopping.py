@@ -505,7 +505,7 @@ class ShoppingScreen(Screen):
         if key == ord("b") or key == ord("B"):
             from app.local_db import get_session, CachedProduct
             with get_session() as db:
-                p = db.query(CachedProduct).first()
+                p = db.query(CachedProduct).filter(CachedProduct.barcode != None).first()  # noqa: E711
             if p and p.barcode:
                 self.on_barcode_scan(p.barcode)
             return True

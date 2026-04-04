@@ -21,5 +21,4 @@ libffi-dev
 libssl-dev
 libgl-dev
 libgles-dev
-xorg
-xserver-xorg-video-fbdev
+libmtdev1

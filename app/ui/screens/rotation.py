@@ -1,20 +1,21 @@
 """
-RotationScreen – Display-Drehung beim ersten Start.
+RotationScreen – Display-Drehung beim ersten Start (Tastatur-only).
 
 Wird angezeigt wenn noch keine Display-Rotation gespeichert ist.
-Der User kann das Display um 90° drehen bis es passt.
-Nach Bestätigung wird die Rotation gespeichert und die App neu gestartet.
+Keine Touch-Eingabe nötig — nur Tastatur:
+  D = 90° drehen (App startet neu)
+  Enter = bestätigen, weiter zum Setup
 """
 
 import logging
 import os
 import sys
 
-from kivy.app import App
+from kivy.core.window import Window
 from kivy.lang import Builder
 from kivy.uix.screenmanager import Screen
 
-from app.display_rotation import save_rotation
+from app.display_rotation import confirm_rotation, save_rotation
 
 log = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ Builder.load_string("""
     BoxLayout:
         orientation: 'vertical'
         padding: [40, 30, 40, 30]
-        spacing: 20
+        spacing: 10
 
         Widget:
             size_hint_y: 1
@@ -40,75 +41,81 @@ Builder.load_string("""
         Label:
             text: '[color=ffffff]club[/color][color=ff6b35][b]fridge[/b][/color]'
             markup: True
-            font_size: 32
+            font_size: 28
             size_hint_y: None
-            height: 40
+            height: 36
+
+        Widget:
+            size_hint_y: 0.3
 
         Label:
             text: 'Ist diese Anzeige richtig herum?'
-            font_size: 20
+            font_size: 18
             color: 0.85, 0.85, 0.85, 1
             size_hint_y: None
-            height: 30
+            height: 28
 
         Widget:
-            size_hint_y: 0.5
+            size_hint_y: 0.3
 
-        BoxLayout:
-            orientation: 'horizontal'
+        Label:
+            text: '[b]D[/b]  =  Display um 90\\u00b0 drehen'
+            markup: True
+            font_size: 16
+            color: 0.65, 0.65, 0.65, 1
             size_hint_y: None
-            height: 50
-            spacing: 20
-            padding: [40, 0, 40, 0]
+            height: 24
 
-            Button:
-                text: 'Drehen (90\\u00b0)'
-                font_size: 18
-                background_normal: ''
-                background_color: 0.25, 0.25, 0.25, 1
-                on_press: root.rotate()
-
-            Button:
-                text: 'Ja, weiter'
-                font_size: 18
-                background_normal: ''
-                background_color: 1.0, 0.42, 0.208, 1
-                on_press: root.confirm()
+        Label:
+            text: '[b]Enter[/b]  =  Passt, weiter'
+            markup: True
+            font_size: 16
+            color: 1.0, 0.42, 0.208, 1
+            size_hint_y: None
+            height: 24
 
         Widget:
             size_hint_y: 1
 """)
 
-
-# Rotations-Reihenfolge beim Durchklicken
 _ROTATIONS = [0, 90, 180, 270]
 
 
 class RotationScreen(Screen):
-    """Zeigt einen Dialog zum Drehen des Displays um 90°."""
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # Aktuelle Rotation aus Kivy-Config lesen
+    def on_enter(self):
+        Window.bind(on_key_down=self._on_key)
+
+    def on_leave(self):
+        Window.unbind(on_key_down=self._on_key)
+
+    def _on_key(self, window, key, scancode, codepoint, modifiers):
+        if codepoint == 'd':
+            self._rotate()
+            return True
+        if key == 13:  # Enter
+            self._confirm()
+            return True
+        return False
+
+    def _get_current(self):
         from kivy.config import Config
         try:
-            self._current = int(Config.get("graphics", "rotation"))
+            return int(Config.get("graphics", "rotation"))
         except (ValueError, KeyError):
-            self._current = 0
+            return 0
 
-    def rotate(self):
-        """Display um 90° drehen und App neu starten."""
-        idx = _ROTATIONS.index(self._current) if self._current in _ROTATIONS else 0
+    def _rotate(self):
+        current = self._get_current()
+        idx = _ROTATIONS.index(current) if current in _ROTATIONS else 0
         new_rotation = _ROTATIONS[(idx + 1) % len(_ROTATIONS)]
-        log.info("Display-Rotation: %d° → %d°", self._current, new_rotation)
+        log.info("Display-Rotation: %d -> %d", current, new_rotation)
         save_rotation(new_rotation)
-        # App neu starten damit Kivy die neue Rotation übernimmt
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
-    def confirm(self):
-        """Aktuelle Rotation bestätigen und zum Setup weiter."""
-        save_rotation(self._current)
-        log.info("Display-Rotation bestätigt: %d°", self._current)
-        # App neu starten — main.py liest jetzt die gespeicherte Rotation
-        # und überspringt den RotationScreen
+    def _confirm(self):
+        current = self._get_current()
+        log.info("Display-Rotation bestaetigt: %d", current)
+        save_rotation(current)
+        confirm_rotation()
         os.execv(sys.executable, [sys.executable] + sys.argv)

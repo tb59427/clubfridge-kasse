@@ -209,6 +209,20 @@ def mark_bookings_synced(booking_ids: list[str]) -> None:
         db.query(PendingBooking).filter(
             PendingBooking.id.in_(booking_ids)
         ).update({"synced": True}, synchronize_session=False)
+    # Alte gesyncte Buchungen aufräumen (> 24h)
+    cleanup_synced_bookings()
+
+
+def cleanup_synced_bookings() -> None:
+    """Löscht synchronisierte Buchungen die älter als 24 Stunden sind."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    with get_session() as db:
+        deleted = db.query(PendingBooking).filter(
+            PendingBooking.synced == True,  # noqa: E712
+            PendingBooking.booked_at < cutoff,
+        ).delete(synchronize_session=False)
+        if deleted:
+            log.info("Cleanup: %d alte gesyncte Buchungen gelöscht", deleted)
 
 
 def replace_member_cache(members: list[dict]) -> None:

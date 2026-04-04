@@ -424,44 +424,6 @@ class SetupScreen(Screen):
         """WLAN-Verbindung im Hintergrund-Thread."""
         import subprocess
         try:
-            # NetworkManager Connection-Datei direkt schreiben (braucht keine PolicyKit-Rechte)
-            nm_dir = "/etc/NetworkManager/system-connections"
-            nm_file = f"{nm_dir}/{ssid}.nmconnection"
-            nm_content = (
-                f"[connection]\n"
-                f"id={ssid}\n"
-                f"type=wifi\n"
-                f"autoconnect=true\n"
-                f"\n"
-                f"[wifi]\n"
-                f"ssid={ssid}\n"
-                f"mode=infrastructure\n"
-                f"\n"
-                f"[wifi-security]\n"
-                f"key-mgmt=wpa-psk\n"
-                f"psk={password}\n"
-                f"\n"
-                f"[ipv4]\n"
-                f"method=auto\n"
-                f"\n"
-                f"[ipv6]\n"
-                f"method=auto\n"
-            )
-
-            # Schreiben via tee (braucht keine elevated privileges im Pi-Image,
-            # da der pi-User über sudoers NOPASSWD hat)
-            write_result = subprocess.run(
-                ["sudo", "tee", nm_file],
-                input=nm_content, capture_output=True, text=True, timeout=5,
-            )
-            if write_result.returncode != 0:
-                raise RuntimeError(f"Konnte {nm_file} nicht schreiben")
-
-            subprocess.run(
-                ["sudo", "chmod", "600", nm_file],
-                capture_output=True, timeout=5,
-            )
-
             # WiFi-Radio sicherstellen (kann auf Pi-Image deaktiviert sein)
             subprocess.run(
                 ["sudo", "nmcli", "radio", "wifi", "on"],
@@ -479,11 +441,26 @@ class SetupScreen(Screen):
                     break
                 time.sleep(1)
 
-            # NetworkManager die neue Verbindung laden lassen (braucht root)
+            # Bestehende Verbindung mit gleichem Namen löschen (falls vorhanden)
             subprocess.run(
-                ["sudo", "nmcli", "connection", "reload"],
-                capture_output=True, timeout=10,
+                ["sudo", "nmcli", "connection", "delete", ssid],
+                capture_output=True, timeout=5,
             )
+
+            # WiFi-Verbindung direkt über nmcli anlegen (kein Datei-Schreiben nötig)
+            add_result = subprocess.run(
+                ["sudo", "nmcli", "connection", "add",
+                 "type", "wifi",
+                 "con-name", ssid,
+                 "ssid", ssid,
+                 "wifi-sec.key-mgmt", "wpa-psk",
+                 "wifi-sec.psk", password,
+                 "connection.autoconnect", "yes"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if add_result.returncode != 0:
+                err = add_result.stderr.strip() or add_result.stdout.strip()
+                raise RuntimeError(f"nmcli connection add: {err}")
 
             # Verbindung aktivieren
             Clock.schedule_once(
