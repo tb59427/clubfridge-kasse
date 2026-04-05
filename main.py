@@ -18,28 +18,19 @@ Config.set("graphics", "resizable", "0")
 Config.set("graphics", "width", str(settings.window_width))
 Config.set("graphics", "height", str(settings.window_height))
 
-from app.display_rotation import get_saved_rotation  # noqa: E402
 from app.provision import is_configured  # noqa: E402
 
 if sys.platform == "linux":
-    # 1. Gespeicherte Rotation hat Vorrang (vom Drehen-Dialog oder manuell)
-    _saved = get_saved_rotation()
-    if _saved is not None and _saved != 0:
-        Config.set("graphics", "rotation", str(_saved))
-    elif _saved is None and is_configured():
-        # 2. Bestandsinstallation ohne gespeicherte Rotation: Auto-Detect
-        if settings.display_rotation:
-            _rotation = str(settings.display_rotation)
-            try:
-                _fb_size = open("/sys/class/graphics/fb0/virtual_size").read().strip()
-                _fb_w, _fb_h = (int(x) for x in _fb_size.split(","))
-                if _fb_h <= _fb_w:
-                    _rotation = "180"
-            except Exception:
-                pass
-            Config.set("graphics", "rotation", _rotation)
-    # 3. Erster Start ohne Rotation: keine Rotation setzen (Dialog entscheidet)
-
+    if settings.display_rotation:
+        _rotation = str(settings.display_rotation)  # Default: 270
+        try:
+            _fb_size = open("/sys/class/graphics/fb0/virtual_size").read().strip()
+            _fb_w, _fb_h = (int(x) for x in _fb_size.split(","))
+            if _fb_h <= _fb_w:
+                _rotation = "180"
+        except Exception:
+            pass
+        Config.set("graphics", "rotation", _rotation)
     # Auf Linux immer Fullscreen
     Config.set("graphics", "fullscreen", "auto")
 

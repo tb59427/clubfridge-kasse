@@ -29,13 +29,8 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=clubfridge-kasse
 
-# Sandboxing (konservativ: GPIO + Display benötigt Zugriff)
-# NoNewPrivileges=true entfernt: WLAN-Setup braucht sudo
-# RestrictSUIDSGID=true entfernt: blockiert sudo (SUID-Binary)
-ProtectKernelTunables=true
-ProtectKernelModules=true
-ProtectControlGroups=true
-LockPersonality=true
+# Sandboxing deaktiviert: WLAN-Setup braucht sudo/nmcli,
+# und mehrere Protect*-Optionen setzen implizit NoNewPrivileges=true
 
 [Install]
 WantedBy=graphical.target multi-user.target

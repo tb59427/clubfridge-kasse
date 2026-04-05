@@ -108,15 +108,14 @@ if [ -f "${BOOT_CONFIG}" ]; then
     # I2C aktivieren (Touch Display 2 Goodix Controller)
     sed -i 's/^#dtparam=i2c_arm=on/dtparam=i2c_arm=on/' "${BOOT_CONFIG}"
 
-    # display_auto_detect deaktivieren (wir laden das Overlay manuell)
-    sed -i 's/^display_auto_detect=1/display_auto_detect=0/' "${BOOT_CONFIG}"
-
     if [ "${VARIANT}" = "pi3" ]; then
-        # ── Touch Display 1: Overlay mit Touch-Rotation ──────────────
-        echo "" >> "${BOOT_CONFIG}"
-        echo "# Clubfridge: Touch Display 1 (180° für Standard-Gehäuse)" >> "${BOOT_CONFIG}"
-        echo "dtoverlay=vc4-kms-dsi-7inch,invx,invy" >> "${BOOT_CONFIG}"
+        # ── Touch Display 1: display_auto_detect erkennt TD1 automatisch.
+        # Touch-Rotation macht Kivy (rotation=180), NICHT das Kernel-Overlay
+        # (invx,invy würde Touch doppelt invertieren).
+        :
     else
+        # display_auto_detect deaktivieren (TD2 braucht manuelles Overlay)
+        sed -i 's/^display_auto_detect=1/display_auto_detect=0/' "${BOOT_CONFIG}"
         # ── Touch Display 2: Overlay mit Display+Touch-Rotation ──────
         echo "" >> "${BOOT_CONFIG}"
         echo "# Clubfridge: Touch Display 2 (270° für Landscape)" >> "${BOOT_CONFIG}"
@@ -167,6 +166,11 @@ cat > "${ROOTFS_DIR}/home/${SERVICE_USER}/.bash_profile" << 'BPEOF'
 # Display-Rotation beim ersten Start (nur auf TTY1)
 if [ "$(tty)" = "/dev/tty1" ] && [ ! -f /opt/clubfridge/kasse/.display_rotation_confirmed ]; then
     /opt/clubfridge/kasse/deploy/display-rotation-setup.sh
+fi
+# Console-Echo deaktivieren und Shell blockieren damit Kivy exklusiv läuft
+if [ "$(tty)" = "/dev/tty1" ]; then
+    stty -echo 2>/dev/null
+    exec sleep infinity
 fi
 BPEOF
 chown 1000:1000 "${ROOTFS_DIR}/home/${SERVICE_USER}/.bash_profile"
