@@ -267,12 +267,11 @@ if [[ "${IS_DESKTOP}" == "true" ]]; then
 [Desktop Entry]
 Type=Application
 Name=Clubfridge Kasse
-Exec=${VENV}/bin/python ${INSTALL_DIR}/main.py
+Exec=env SDL_VIDEODRIVER=x11 KIVY_NO_ENV_CONFIG=1 ${VENV}/bin/python ${INSTALL_DIR}/main.py
 Path=${INSTALL_DIR}
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true
-Environment=KIVY_NO_ENV_CONFIG=1
 EOF
     chown -R "${SERVICE_USER}:${SERVICE_USER}" "${AUTOSTART_DIR}"
     info "Desktop-Autostart eingerichtet (Kasse startet als Desktop-App)"
