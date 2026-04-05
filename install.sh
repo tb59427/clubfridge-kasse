@@ -380,6 +380,8 @@ if [[ "${IS_DESKTOP}" == "true" && "${IS_TD2}" == "true" ]]; then
     mkdir -p "${OVERRIDE_DIR}"
     cat > "${OVERRIDE_DIR}/kmsdrm.conf" <<'KMSEOF'
 [Unit]
+# After= leeren (sonst additiv zum Base-File → graphical-session.target bleibt)
+After=
 After=network-online.target lightdm.service
 
 [Service]
