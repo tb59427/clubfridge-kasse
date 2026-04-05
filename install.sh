@@ -358,41 +358,59 @@ fi
 step "Display-Umgebung wird konfiguriert…"
 
 if [[ "${IS_DESKTOP}" == "true" && "${IS_TD2}" == "true" ]]; then
-    # ── Desktop + Touch Display 2 (Portrait-Display → Hardware-Rotation) ──
-    # dtoverlay dreht Display+Touch auf Hardware-Ebene → Compositor sieht Landscape.
-    # Kasse läuft als Fullscreen-Desktop-App (kein KMSDRM nötig).
-    info "Desktop + Touch Display 2: Hardware-Rotation + Fullscreen-Desktop-App"
+    # ── Desktop + Touch Display 2 (Portrait-Panel, 720x1280) ─────────
+    # lightdm stoppen → KMSDRM → Kivy rotation=270 für Landscape.
+    # dtoverlay in config.txt für Touch-Rotation (Touch dreht mit Display).
+    info "Desktop + Touch Display 2: KMSDRM-Modus"
 
-    # Hardware-Rotation in config.txt (Display + Touch zusammen)
+    # dtoverlay in config.txt (Touch-Koordinaten drehen)
     BOOT_CONFIG="/boot/firmware/config.txt"
     if [[ -f "${BOOT_CONFIG}" ]] && ! grep -q "vc4-kms-dsi-ili9881-7inch" "${BOOT_CONFIG}"; then
         sed -i 's/^display_auto_detect=1/display_auto_detect=0/' "${BOOT_CONFIG}"
         echo "" >> "${BOOT_CONFIG}"
-        echo "# Clubfridge: Touch Display 2 Hardware-Rotation" >> "${BOOT_CONFIG}"
+        echo "# Clubfridge: Touch Display 2" >> "${BOOT_CONFIG}"
         echo "dtoverlay=vc4-kms-dsi-ili9881-7inch,rotation=270" >> "${BOOT_CONFIG}"
-        info "Hardware-Rotation in config.txt eingetragen (wird nach Reboot aktiv)"
+        info "dtoverlay in config.txt eingetragen (wird nach Reboot aktiv)"
     fi
 
-    # Altes KMSDRM-Override aufräumen (falls von früherem Install vorhanden)
-    rm -f "/etc/systemd/system/${SERVICE_NAME}@.service.d/kmsdrm.conf"
+    # Service-Override: lightdm stoppen + KMSDRM
+    OVERRIDE_DIR="/etc/systemd/system/${SERVICE_NAME}@.service.d"
+    mkdir -p "${OVERRIDE_DIR}"
+    cat > "${OVERRIDE_DIR}/kmsdrm.conf" <<'KMSEOF'
+[Service]
+ExecStartPre=/bin/bash -c 'systemctl stop lightdm 2>/dev/null; sleep 2; true'
+Environment=SDL_VIDEODRIVER=kmsdrm
+Environment=KIVY_NO_ENV_CONFIG=1
+KMSEOF
+
+    # Desktop-Autostart entfernen (Service übernimmt via KMSDRM)
+    rm -f "/home/${SERVICE_USER}/.config/autostart/clubfridge-kasse.desktop"
+
+    # Service aktivieren (wurde oben für Desktop deaktiviert)
+    systemctl enable "${SERVICE_NAME}@${SERVICE_USER}"
+    systemctl daemon-reload
+    info "Service aktiviert: ${SERVICE_NAME}@${SERVICE_USER} (KMSDRM)"
 
     # .display_rotation_confirmed anlegen (kein whiptail-Dialog)
     touch "${INSTALL_DIR}/.display_rotation_confirmed"
     chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/.display_rotation_confirmed"
 
-    # DISPLAY_ROTATION=0 (Hardware dreht) + FULLSCREEN=true
-    if grep -q "^DISPLAY_ROTATION=" "${ENV_FILE}" 2>/dev/null; then
-        sed -i 's/^DISPLAY_ROTATION=.*/DISPLAY_ROTATION=0/' "${ENV_FILE}"
+    # .env: DISPLAY_ROTATION=270 (Kivy dreht Content) + FULLSCREEN=true
+    touch "${ENV_FILE}"
+    if grep -q "^DISPLAY_ROTATION=" "${ENV_FILE}"; then
+        sed -i 's/^DISPLAY_ROTATION=.*/DISPLAY_ROTATION=270/' "${ENV_FILE}"
     else
-        echo "DISPLAY_ROTATION=0" >> "${ENV_FILE}"
+        echo "DISPLAY_ROTATION=270" >> "${ENV_FILE}"
     fi
-    if grep -q "^FULLSCREEN=" "${ENV_FILE}" 2>/dev/null; then
+    if grep -q "^FULLSCREEN=" "${ENV_FILE}"; then
         sed -i 's/^FULLSCREEN=.*/FULLSCREEN=true/' "${ENV_FILE}"
     else
         echo "FULLSCREEN=true" >> "${ENV_FILE}"
     fi
+    chown "${SERVICE_USER}:${SERVICE_USER}" "${ENV_FILE}"
+    info ".env: DISPLAY_ROTATION=270, FULLSCREEN=true"
 
-    # fbcon-rotate Service (console: 0 = keine zusätzliche Drehung)
+    # fbcon-rotate Service (Console aufrecht)
     cat > /usr/local/bin/fbcon-rotate.sh <<'FBEOF'
 #!/bin/bash
 echo 0 > /sys/class/graphics/fbcon/rotate_all
