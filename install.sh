@@ -62,6 +62,12 @@ echo ""
 
 [[ $EUID -eq 0 ]] || error "Bitte mit sudo ausführen: sudo bash install.sh"
 
+# ── Logging ──────────────────────────────────────────────────────────────
+
+LOGFILE="/var/log/clubfridge-install.log"
+exec > >(tee -a "${LOGFILE}") 2>&1
+echo "── Install gestartet: $(date -Iseconds) ──"
+
 # ── Desktop-Erkennung (früh, wird überall im Script gebraucht) ──────────────
 
 IS_DESKTOP=false
@@ -367,16 +373,18 @@ if [[ "${IS_DESKTOP}" == "true" && "${IS_TD2}" == "true" ]]; then
         info "Hardware-Rotation in config.txt eingetragen"
     fi
 
-    # Service-Override: Compositor stoppen + KMSDRM
+    # Service-Override: Display-Manager/Compositor stoppen + KMSDRM
+    # Trixie nutzt labwc (Wayland) — DM kann lightdm, greetd oder gdm sein
     OVERRIDE_DIR="/etc/systemd/system/${SERVICE_NAME}@.service.d"
     mkdir -p "${OVERRIDE_DIR}"
     cat > "${OVERRIDE_DIR}/kmsdrm.conf" <<'KMSEOF'
 [Service]
-ExecStartPre=/bin/bash -c 'systemctl stop lightdm 2>/dev/null; sleep 2; true'
+ExecStartPre=/bin/bash -c 'for dm in lightdm greetd gdm gdm3 sddm; do systemctl stop "$dm" 2>/dev/null || true; done; sleep 2'
 Environment=SDL_VIDEODRIVER=kmsdrm
 Environment=KIVY_NO_ENV_CONFIG=1
 KMSEOF
-    info "KMSDRM-Modus konfiguriert (Compositor wird beim Kasse-Start gestoppt)"
+    systemctl daemon-reload
+    info "KMSDRM-Modus konfiguriert (Display-Manager wird beim Kasse-Start gestoppt)"
 
     # Kein Desktop-Autostart nötig (Service übernimmt)
     rm -f "/home/${SERVICE_USER}/.config/autostart/clubfridge-kasse.desktop"
@@ -390,8 +398,16 @@ KMSEOF
     chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/.display_rotation_confirmed"
 
     # DISPLAY_ROTATION=0 (Hardware dreht) + FULLSCREEN=true
-    if ! grep -q "^DISPLAY_ROTATION=" "${ENV_FILE}" 2>/dev/null; then
+    # Bestehende Werte ersetzen (z.B. nach erneutem Installer-Lauf)
+    if grep -q "^DISPLAY_ROTATION=" "${ENV_FILE}" 2>/dev/null; then
+        sed -i 's/^DISPLAY_ROTATION=.*/DISPLAY_ROTATION=0/' "${ENV_FILE}"
+    else
         echo "DISPLAY_ROTATION=0" >> "${ENV_FILE}"
+    fi
+    if grep -q "^FULLSCREEN=" "${ENV_FILE}" 2>/dev/null; then
+        sed -i 's/^FULLSCREEN=.*/FULLSCREEN=true/' "${ENV_FILE}"
+    else
+        echo "FULLSCREEN=true" >> "${ENV_FILE}"
     fi
 
     # fbcon-rotate Service (console: 0 = keine zusätzliche Drehung)
