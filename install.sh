@@ -358,10 +358,10 @@ fi
 step "Display-Umgebung wird konfiguriert…"
 
 if [[ "${IS_DESKTOP}" == "true" && "${IS_TD2}" == "true" ]]; then
-    # ── Desktop + Touch Display 2 (Portrait-Display) ──────────────────
-    # Kivy kann auf Wayland nicht korrekt mit Portrait-Displays umgehen.
-    # Lösung: Hardware-Rotation in config.txt + Compositor stoppen + KMSDRM.
-    info "Desktop + Touch Display 2: Hardware-Rotation + KMSDRM-Modus"
+    # ── Desktop + Touch Display 2 (Portrait-Display → Hardware-Rotation) ──
+    # dtoverlay dreht Display+Touch auf Hardware-Ebene → Compositor sieht Landscape.
+    # Kasse läuft als Fullscreen-Desktop-App (kein KMSDRM nötig).
+    info "Desktop + Touch Display 2: Hardware-Rotation + Fullscreen-Desktop-App"
 
     # Hardware-Rotation in config.txt (Display + Touch zusammen)
     BOOT_CONFIG="/boot/firmware/config.txt"
@@ -370,35 +370,17 @@ if [[ "${IS_DESKTOP}" == "true" && "${IS_TD2}" == "true" ]]; then
         echo "" >> "${BOOT_CONFIG}"
         echo "# Clubfridge: Touch Display 2 Hardware-Rotation" >> "${BOOT_CONFIG}"
         echo "dtoverlay=vc4-kms-dsi-ili9881-7inch,rotation=270" >> "${BOOT_CONFIG}"
-        info "Hardware-Rotation in config.txt eingetragen"
+        info "Hardware-Rotation in config.txt eingetragen (wird nach Reboot aktiv)"
     fi
 
-    # Service-Override: Display-Manager/Compositor stoppen + KMSDRM
-    # Trixie nutzt labwc (Wayland) — DM kann lightdm, greetd oder gdm sein
-    OVERRIDE_DIR="/etc/systemd/system/${SERVICE_NAME}@.service.d"
-    mkdir -p "${OVERRIDE_DIR}"
-    cat > "${OVERRIDE_DIR}/kmsdrm.conf" <<'KMSEOF'
-[Service]
-ExecStartPre=/bin/bash -c 'for dm in lightdm greetd gdm gdm3 sddm; do systemctl stop "$dm" 2>/dev/null || true; done; sleep 2'
-Environment=SDL_VIDEODRIVER=kmsdrm
-Environment=KIVY_NO_ENV_CONFIG=1
-KMSEOF
-    systemctl daemon-reload
-    info "KMSDRM-Modus konfiguriert (Display-Manager wird beim Kasse-Start gestoppt)"
-
-    # Kein Desktop-Autostart nötig (Service übernimmt)
-    rm -f "/home/${SERVICE_USER}/.config/autostart/clubfridge-kasse.desktop"
-
-    # Service aktivieren (wurde oben für Desktop deaktiviert, aber TD2 braucht KMSDRM-Service)
-    systemctl enable "${SERVICE_NAME}@${SERVICE_USER}"
-    info "Service aktiviert: ${SERVICE_NAME}@${SERVICE_USER} (KMSDRM-Modus)"
+    # Altes KMSDRM-Override aufräumen (falls von früherem Install vorhanden)
+    rm -f "/etc/systemd/system/${SERVICE_NAME}@.service.d/kmsdrm.conf"
 
     # .display_rotation_confirmed anlegen (kein whiptail-Dialog)
     touch "${INSTALL_DIR}/.display_rotation_confirmed"
     chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/.display_rotation_confirmed"
 
     # DISPLAY_ROTATION=0 (Hardware dreht) + FULLSCREEN=true
-    # Bestehende Werte ersetzen (z.B. nach erneutem Installer-Lauf)
     if grep -q "^DISPLAY_ROTATION=" "${ENV_FILE}" 2>/dev/null; then
         sed -i 's/^DISPLAY_ROTATION=.*/DISPLAY_ROTATION=0/' "${ENV_FILE}"
     else
@@ -444,32 +426,6 @@ elif [[ "${IS_DESKTOP}" == "true" ]]; then
     if ! grep -q "^FULLSCREEN=" "${ENV_FILE}" 2>/dev/null; then
         echo "FULLSCREEN=false" >> "${ENV_FILE}"
     fi
-
-    # Desktop-Autostart (Kasse als Fenster-App)
-    systemctl disable "${SERVICE_NAME}@${SERVICE_USER}" 2>/dev/null || true
-    AUTOSTART_DIR="/home/${SERVICE_USER}/.config/autostart"
-    mkdir -p "${AUTOSTART_DIR}"
-    cat > "${AUTOSTART_DIR}/clubfridge-kasse.desktop" <<DTEOF
-[Desktop Entry]
-Type=Application
-Name=Clubfridge Kasse
-Exec=${INSTALL_DIR}/deploy/start-desktop.sh
-Path=${INSTALL_DIR}
-Hidden=false
-NoDisplay=false
-X-GNOME-Autostart-enabled=true
-DTEOF
-    chown -R "${SERVICE_USER}:${SERVICE_USER}" "${AUTOSTART_DIR}"
-
-    # Start-Script für Desktop
-    cat > "${INSTALL_DIR}/deploy/start-desktop.sh" <<'SDEOF'
-#!/bin/bash
-export SDL_VIDEODRIVER=x11
-export KIVY_NO_ENV_CONFIG=1
-cd /opt/clubfridge/kasse
-exec /opt/clubfridge/kasse/.venv/bin/python main.py
-SDEOF
-    chmod +x "${INSTALL_DIR}/deploy/start-desktop.sh"
     chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/deploy/start-desktop.sh"
     info "Desktop-Autostart eingerichtet"
 else
