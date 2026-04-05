@@ -414,12 +414,12 @@ KMSEOF
     chown "${SERVICE_USER}:${SERVICE_USER}" "${ENV_FILE}"
     info ".env: DISPLAY_ROTATION=270, FULLSCREEN=true"
 
-    # Console-Rotation 180° in cmdline.txt (wirkt ab erstem Boot-Frame)
+    # Console-Rotation in cmdline.txt (90° CW, passend zu dtoverlay rotation=270)
     CMDLINE="/boot/firmware/cmdline.txt"
     if [[ -f "${CMDLINE}" ]] && ! grep -q 'fbcon=rotate' "${CMDLINE}"; then
-        sed -i 's/$/ fbcon=rotate:2/' "${CMDLINE}"
+        sed -i 's/$/ fbcon=rotate:1/' "${CMDLINE}"
     fi
-    info "Console-Rotation konfiguriert (fbcon=rotate:2)"
+    info "Console-Rotation konfiguriert (fbcon=rotate:1)"
 
 elif [[ "${IS_DESKTOP}" == "true" ]]; then
     # ── Desktop + Landscape-Display (TD1, HDMI, etc.) ─────────────────
