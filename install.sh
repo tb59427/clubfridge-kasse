@@ -243,23 +243,29 @@ info "Update-Timer aktiv (täglich 03:00 Uhr): clubfridge-update@${SERVICE_USER}
 
 # ── Desktop-Autostart (optional, falls kein Display-Manager vorhanden) ────────
 
-AUTOSTART_DIR="/home/${SERVICE_USER}/.config/autostart"
-AUTOSTART_FILE="${AUTOSTART_DIR}/clubfridge-kasse.desktop"
+if [[ "${IS_DESKTOP}" == "true" ]]; then
+    # Desktop: Kasse als Desktop-App starten (erbt Wayland/X11 Umgebung)
+    # systemd-Service deaktivieren (würde ohne Display-Zugriff laufen)
+    systemctl disable "${SERVICE_NAME}@${SERVICE_USER}" 2>/dev/null || true
 
-if [[ ! -f "${AUTOSTART_FILE}" ]]; then
+    AUTOSTART_DIR="/home/${SERVICE_USER}/.config/autostart"
+    AUTOSTART_FILE="${AUTOSTART_DIR}/clubfridge-kasse.desktop"
     step "Desktop-Autostart wird eingerichtet…"
     mkdir -p "${AUTOSTART_DIR}"
     cat > "${AUTOSTART_FILE}" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Clubfridge Kasse
-Exec=systemctl --user start ${SERVICE_NAME}@${SERVICE_USER}
+Exec=${VENV}/bin/python ${INSTALL_DIR}/main.py
+Path=${INSTALL_DIR}
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true
+Environment=KIVY_NO_ENV_CONFIG=1
 EOF
     chown -R "${SERVICE_USER}:${SERVICE_USER}" "${AUTOSTART_DIR}"
-    info "Desktop-Autostart eingerichtet"
+    info "Desktop-Autostart eingerichtet (Kasse startet als Desktop-App)"
+    info "Service deaktiviert (nicht nötig auf Desktop)"
 fi
 
 # ── Hardware-Erkennung (informativ) ──────────────────────────────────────────
