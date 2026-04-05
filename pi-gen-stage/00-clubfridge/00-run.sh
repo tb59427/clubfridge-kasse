@@ -92,9 +92,9 @@ CHEOF
 # Alles über config.txt + cmdline.txt auf Hardware-Ebene.
 #
 # Touch Display 1 (800x480, FT5406):
-#   - Display-Rotation: video=DSI-1:800x480@60,rotate=180 in cmdline.txt
-#   - Touch-Rotation: dtoverlay=vc4-kms-dsi-7inch,invx,invy in config.txt
-#   - display_auto_detect=0 damit das manuelle Overlay nicht doppelt lädt
+#   - display_auto_detect=1 (default, erkennt TD1 automatisch)
+#   - Console-Rotation: fbcon=rotate:2 in cmdline.txt
+#   - Touch-Rotation: Kivy rotation=180 (KEIN invx,invy Overlay!)
 #
 # Touch Display 2 (720x1280, Goodix):
 #   - Display+Touch: dtoverlay=vc4-kms-dsi-ili9881-7inch,rotation=270
@@ -141,7 +141,35 @@ if [ -f "${CMDLINE}" ]; then
             sed -i 's/auto_initramfs=1/auto_initramfs=0/' "${BOOT_CONFIG}"
         fi
     fi
-    # Pi5/TD2: Console-Rotation via fbcon-rotate.service (cmdline von cloud-init verwaltet)
+    if [ "${VARIANT}" != "pi3" ]; then
+        # Pi5/TD2: Console-Rotation via fbcon-rotate.service
+        # Hardcode 0 — das dtoverlay dreht Display+Touch auf Hardware-Ebene
+        install -d "${ROOTFS_DIR}/usr/local/bin"
+        cat > "${ROOTFS_DIR}/usr/local/bin/fbcon-rotate.sh" << 'FBEOF'
+#!/bin/bash
+echo 0 > /sys/class/graphics/fbcon/rotate_all
+FBEOF
+        chmod +x "${ROOTFS_DIR}/usr/local/bin/fbcon-rotate.sh"
+
+        cat > "${ROOTFS_DIR}/etc/systemd/system/fbcon-rotate.service" << 'FBSEOF'
+[Unit]
+Description=Rotate framebuffer console
+DefaultDependencies=no
+After=systemd-modules-load.service
+Before=getty@tty1.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/fbcon-rotate.sh
+
+[Install]
+WantedBy=sysinit.target
+FBSEOF
+
+        on_chroot << CHEOF
+systemctl enable fbcon-rotate.service
+CHEOF
+    fi
 fi
 
 # ── Cloud-init user-data (User vorkonfigurieren, piwiz deaktivieren) ─────────
@@ -161,8 +189,10 @@ EOF
 
 chmod +x "${ROOTFS_DIR}${INSTALL_DIR}/deploy/display-rotation-setup.sh"
 
-# .bash_profile: Rotation-Dialog vor allem anderen (nur auf TTY1, nur beim ersten Start)
-cat > "${ROOTFS_DIR}/home/${SERVICE_USER}/.bash_profile" << 'BPEOF'
+if [ "${VARIANT}" = "pi3" ]; then
+    # Pi3/TD1: Rotation-Dialog beim ersten Start (User wählt 0° oder 180°)
+    # .bash_profile: Rotation-Dialog vor allem anderen (nur auf TTY1, nur beim ersten Start)
+    cat > "${ROOTFS_DIR}/home/${SERVICE_USER}/.bash_profile" << 'BPEOF'
 # Display-Rotation beim ersten Start (nur auf TTY1)
 if [ "$(tty)" = "/dev/tty1" ] && [ ! -f /opt/clubfridge/kasse/.display_rotation_confirmed ]; then
     /opt/clubfridge/kasse/deploy/display-rotation-setup.sh
@@ -173,11 +203,31 @@ if [ "$(tty)" = "/dev/tty1" ]; then
     exec sleep infinity
 fi
 BPEOF
-chown 1000:1000 "${ROOTFS_DIR}/home/${SERVICE_USER}/.bash_profile"
 
-# Kasse-Service wartet bis Rotation bestätigt ist
-mkdir -p "${ROOTFS_DIR}/etc/systemd/system/clubfridge-kasse@.service.d"
-cat > "${ROOTFS_DIR}/etc/systemd/system/clubfridge-kasse@.service.d/wait-rotation.conf" << 'WAITEOF'
+    # Kasse-Service wartet bis Rotation bestätigt ist
+    mkdir -p "${ROOTFS_DIR}/etc/systemd/system/clubfridge-kasse@.service.d"
+    cat > "${ROOTFS_DIR}/etc/systemd/system/clubfridge-kasse@.service.d/wait-rotation.conf" << 'WAITEOF'
 [Service]
 ExecStartPre=/bin/bash -c 'while [ ! -f /opt/clubfridge/kasse/.display_rotation_confirmed ]; do sleep 1; done'
 WAITEOF
+else
+    # Pi5/TD2: Hardware-Rotation via dtoverlay, kein Dialog nötig
+    cat > "${ROOTFS_DIR}/home/${SERVICE_USER}/.bash_profile" << 'BPEOF'
+# Console-Echo deaktivieren und Shell blockieren damit Kivy exklusiv läuft
+if [ "$(tty)" = "/dev/tty1" ]; then
+    stty -echo 2>/dev/null
+    exec sleep infinity
+fi
+BPEOF
+
+    # .display_rotation_confirmed anlegen (kein Whiptail nötig)
+    touch "${ROOTFS_DIR}${INSTALL_DIR}/.display_rotation_confirmed"
+
+    # Display-Einstellungen vorkonfigurieren (Hardware dreht, Kivy nicht)
+    cat > "${ROOTFS_DIR}${INSTALL_DIR}/.env" << 'ENVEOF'
+DISPLAY_ROTATION=0
+FULLSCREEN=true
+ENVEOF
+    chown 1000:1000 "${ROOTFS_DIR}${INSTALL_DIR}/.env"
+fi
+chown 1000:1000 "${ROOTFS_DIR}/home/${SERVICE_USER}/.bash_profile"

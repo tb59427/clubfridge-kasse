@@ -21,6 +21,7 @@ Config.set("graphics", "height", str(settings.window_height))
 from app.provision import is_configured  # noqa: E402
 
 if sys.platform == "linux":
+    # Rotation: IMMER explizit setzen (sonst überschreibt gecachte config.ini)
     if settings.display_rotation:
         _rotation = str(settings.display_rotation)  # Default: 270
         try:
@@ -31,13 +32,16 @@ if sys.platform == "linux":
         except Exception:
             pass
         Config.set("graphics", "rotation", _rotation)
-    # Fullscreen: auf Headless immer (auch im Setup-Modus).
-    # Auf Desktop (FULLSCREEN=false in .env): nie, auch nicht im Setup-Modus.
+    else:
+        Config.set("graphics", "rotation", "0")
+
+    # Fullscreen: IMMER explizit setzen (sonst überschreibt gecachte config.ini)
     if settings.fullscreen:
         Config.set("graphics", "fullscreen", "auto")
     elif not is_configured() and "WAYLAND_DISPLAY" not in os.environ:
-        # Headless Setup-Modus: Fullscreen erzwingen
         Config.set("graphics", "fullscreen", "auto")
+    else:
+        Config.set("graphics", "fullscreen", "0")
 
 # Kein Multi-Touch-Emulation mit der Maus
 Config.set("input", "mouse", "mouse,disable_multitouch")
