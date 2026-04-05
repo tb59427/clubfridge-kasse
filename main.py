@@ -22,18 +22,7 @@ from app.provision import is_configured  # noqa: E402
 
 if sys.platform == "linux":
     # Rotation: IMMER explizit setzen (sonst überschreibt gecachte config.ini)
-    if settings.display_rotation:
-        _rotation = str(settings.display_rotation)  # Default: 270
-        try:
-            _fb_size = open("/sys/class/graphics/fb0/virtual_size").read().strip()
-            _fb_w, _fb_h = (int(x) for x in _fb_size.split(","))
-            if _fb_h <= _fb_w:
-                _rotation = "180"
-        except Exception:
-            pass
-        Config.set("graphics", "rotation", _rotation)
-    else:
-        Config.set("graphics", "rotation", "0")
+    Config.set("graphics", "rotation", str(settings.display_rotation))
 
     # Fullscreen: IMMER explizit setzen (sonst überschreibt gecachte config.ini)
     if settings.fullscreen:
