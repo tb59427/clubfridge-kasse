@@ -381,6 +381,10 @@ KMSEOF
     # Kein Desktop-Autostart nötig (Service übernimmt)
     rm -f "/home/${SERVICE_USER}/.config/autostart/clubfridge-kasse.desktop"
 
+    # Service aktivieren (wurde oben für Desktop deaktiviert, aber TD2 braucht KMSDRM-Service)
+    systemctl enable "${SERVICE_NAME}@${SERVICE_USER}"
+    info "Service aktiviert: ${SERVICE_NAME}@${SERVICE_USER} (KMSDRM-Modus)"
+
     # .display_rotation_confirmed anlegen (kein whiptail-Dialog)
     touch "${INSTALL_DIR}/.display_rotation_confirmed"
     chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/.display_rotation_confirmed"
