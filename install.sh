@@ -328,21 +328,130 @@ warn "Die Gerätepfade werden automatisch beim Einrichtungs-Assistenten"
 warn "erkannt und in die .env geschrieben. Falls die Geräte jetzt noch"
 warn "nicht angeschlossen sind, bitte VOR dem ersten Start anstecken."
 
+# ── Display-Erkennung ─────────────────────────────────────────────────────
+
+step "Display wird erkannt…"
+
+DSI_MODE=$(cat /sys/class/drm/card*-DSI*/modes 2>/dev/null | head -1)
+IS_TD2=false
+IS_TD1=false
+if [[ "${DSI_MODE}" == "720x1280" ]]; then
+    IS_TD2=true
+    info "Touch Display 2 erkannt (720x1280, DSI)"
+elif [[ "${DSI_MODE}" == "800x480" ]]; then
+    IS_TD1=true
+    info "Touch Display 1 erkannt (800x480, DSI)"
+elif [[ -n "${DSI_MODE}" ]]; then
+    info "DSI-Display erkannt: ${DSI_MODE}"
+else
+    info "Kein DSI-Display erkannt (HDMI oder anderes Display)"
+fi
+
 # ── Display-Konfiguration ─────────────────────────────────────────────────
 
 step "Display-Umgebung wird konfiguriert…"
 
-if [[ "${IS_DESKTOP}" == "true" ]]; then
-    info "Desktop-Umgebung erkannt (Wayland/X11)"
-    info "Display-Rotation wird vom Desktop verwaltet → DISPLAY_ROTATION=0"
-    # Desktop handhabt die Display-Orientierung → Kivy soll nicht drehen
+if [[ "${IS_DESKTOP}" == "true" && "${IS_TD2}" == "true" ]]; then
+    # ── Desktop + Touch Display 2 (Portrait-Display) ──────────────────
+    # Kivy kann auf Wayland nicht korrekt mit Portrait-Displays umgehen.
+    # Lösung: Hardware-Rotation in config.txt + Compositor stoppen + KMSDRM.
+    info "Desktop + Touch Display 2: Hardware-Rotation + KMSDRM-Modus"
+
+    # Hardware-Rotation in config.txt (Display + Touch zusammen)
+    BOOT_CONFIG="/boot/firmware/config.txt"
+    if [[ -f "${BOOT_CONFIG}" ]] && ! grep -q "vc4-kms-dsi-ili9881-7inch" "${BOOT_CONFIG}"; then
+        sed -i 's/^display_auto_detect=1/display_auto_detect=0/' "${BOOT_CONFIG}"
+        echo "" >> "${BOOT_CONFIG}"
+        echo "# Clubfridge: Touch Display 2 Hardware-Rotation" >> "${BOOT_CONFIG}"
+        echo "dtoverlay=vc4-kms-dsi-ili9881-7inch,rotation=270" >> "${BOOT_CONFIG}"
+        info "Hardware-Rotation in config.txt eingetragen"
+    fi
+
+    # Service-Override: Compositor stoppen + KMSDRM
+    OVERRIDE_DIR="/etc/systemd/system/${SERVICE_NAME}@.service.d"
+    mkdir -p "${OVERRIDE_DIR}"
+    cat > "${OVERRIDE_DIR}/kmsdrm.conf" <<'KMSEOF'
+[Service]
+ExecStartPre=/bin/bash -c 'systemctl stop lightdm 2>/dev/null; sleep 2; true'
+Environment=SDL_VIDEODRIVER=kmsdrm
+Environment=KIVY_NO_ENV_CONFIG=1
+KMSEOF
+    info "KMSDRM-Modus konfiguriert (Compositor wird beim Kasse-Start gestoppt)"
+
+    # Kein Desktop-Autostart nötig (Service übernimmt)
+    rm -f "/home/${SERVICE_USER}/.config/autostart/clubfridge-kasse.desktop"
+
+    # .display_rotation_confirmed anlegen (kein whiptail-Dialog)
+    touch "${INSTALL_DIR}/.display_rotation_confirmed"
+    chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/.display_rotation_confirmed"
+
+    # DISPLAY_ROTATION=0 (Hardware dreht) + FULLSCREEN=true
     if ! grep -q "^DISPLAY_ROTATION=" "${ENV_FILE}" 2>/dev/null; then
         echo "DISPLAY_ROTATION=0" >> "${ENV_FILE}"
     fi
-    # Kein Fullscreen auf Desktop (Compositor handhabt Fenstergröße)
+
+    # fbcon-rotate Service (console: 0 = keine zusätzliche Drehung)
+    cat > /usr/local/bin/fbcon-rotate.sh <<'FBEOF'
+#!/bin/bash
+echo 0 > /sys/class/graphics/fbcon/rotate_all
+FBEOF
+    chmod +x /usr/local/bin/fbcon-rotate.sh
+    cat > /etc/systemd/system/fbcon-rotate.service <<'FBSEOF'
+[Unit]
+Description=Rotate framebuffer console
+DefaultDependencies=no
+After=systemd-modules-load.service
+Before=getty@tty1.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/fbcon-rotate.sh
+
+[Install]
+WantedBy=sysinit.target
+FBSEOF
+    systemctl daemon-reload
+    systemctl enable fbcon-rotate.service
+    info "Console-Rotation konfiguriert"
+
+elif [[ "${IS_DESKTOP}" == "true" ]]; then
+    # ── Desktop + Landscape-Display (TD1, HDMI, etc.) ─────────────────
+    info "Desktop + Landscape-Display: Desktop-Autostart-Modus"
+    # Compositor handhabt Rotation, Kivy als Desktop-App
+    if ! grep -q "^DISPLAY_ROTATION=" "${ENV_FILE}" 2>/dev/null; then
+        echo "DISPLAY_ROTATION=0" >> "${ENV_FILE}"
+    fi
     if ! grep -q "^FULLSCREEN=" "${ENV_FILE}" 2>/dev/null; then
         echo "FULLSCREEN=false" >> "${ENV_FILE}"
     fi
+
+    # Desktop-Autostart (Kasse als Fenster-App)
+    systemctl disable "${SERVICE_NAME}@${SERVICE_USER}" 2>/dev/null || true
+    AUTOSTART_DIR="/home/${SERVICE_USER}/.config/autostart"
+    mkdir -p "${AUTOSTART_DIR}"
+    cat > "${AUTOSTART_DIR}/clubfridge-kasse.desktop" <<DTEOF
+[Desktop Entry]
+Type=Application
+Name=Clubfridge Kasse
+Exec=${INSTALL_DIR}/deploy/start-desktop.sh
+Path=${INSTALL_DIR}
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+DTEOF
+    chown -R "${SERVICE_USER}:${SERVICE_USER}" "${AUTOSTART_DIR}"
+
+    # Start-Script für Desktop
+    cat > "${INSTALL_DIR}/deploy/start-desktop.sh" <<'SDEOF'
+#!/bin/bash
+export SDL_VIDEODRIVER=x11
+export KIVY_NO_ENV_CONFIG=1
+cd /opt/clubfridge/kasse
+exec /opt/clubfridge/kasse/.venv/bin/python main.py
+SDEOF
+    chmod +x "${INSTALL_DIR}/deploy/start-desktop.sh"
+    chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/deploy/start-desktop.sh"
+    info "Desktop-Autostart eingerichtet"
 else
     info "Headless-Umgebung erkannt (kein Desktop)"
     info "Display-Rotation wird von Kivy verwaltet (Standard: 180° für Touch Display 1)"
