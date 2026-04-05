@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     cache_refresh_interval_seconds: int = 300
 
     # Display
-    fullscreen: bool = False
+    fullscreen: bool = True
     window_width: int = 800
     window_height: int = 480
     display_rotation: int = 270  # 0, 90, 180, 270 – für Pi Touch Display im Standard-Gehäuse

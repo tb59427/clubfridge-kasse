@@ -31,8 +31,8 @@ if sys.platform == "linux":
         except Exception:
             pass
         Config.set("graphics", "rotation", _rotation)
-    # Fullscreen: immer auf Linux, außer FULLSCREEN=false explizit in .env gesetzt
-    if os.environ.get("FULLSCREEN", "").lower() not in ("false", "0", "no"):
+    # Fullscreen: immer auf Linux, außer FULLSCREEN=false in .env
+    if settings.fullscreen or not is_configured():
         Config.set("graphics", "fullscreen", "auto")
 
 # Kein Multi-Touch-Emulation mit der Maus
