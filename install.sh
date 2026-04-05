@@ -380,8 +380,7 @@ if [[ "${IS_DESKTOP}" == "true" && "${IS_TD2}" == "true" ]]; then
     mkdir -p "${OVERRIDE_DIR}"
     cat > "${OVERRIDE_DIR}/kmsdrm.conf" <<'KMSEOF'
 [Unit]
-After=network-online.target
-Conflicts=lightdm.service
+After=network-online.target lightdm.service
 
 [Service]
 ExecStartPre=/bin/bash -c 'systemctl stop lightdm 2>/dev/null; sleep 2; true'
