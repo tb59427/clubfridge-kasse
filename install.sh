@@ -62,6 +62,13 @@ echo ""
 
 [[ $EUID -eq 0 ]] || error "Bitte mit sudo ausführen: sudo bash install.sh"
 
+# ── Desktop-Erkennung (früh, wird überall im Script gebraucht) ──────────────
+
+IS_DESKTOP=false
+if dpkg -l 2>/dev/null | grep -qE 'labwc|openbox|lxde|wayfire|lightdm'; then
+    IS_DESKTOP=true
+fi
+
 # ── System-Pakete ────────────────────────────────────────────────────────────
 
 step "System-Pakete werden installiert…"
@@ -322,14 +329,9 @@ warn "Die Gerätepfade werden automatisch beim Einrichtungs-Assistenten"
 warn "erkannt und in die .env geschrieben. Falls die Geräte jetzt noch"
 warn "nicht angeschlossen sind, bitte VOR dem ersten Start anstecken."
 
-# ── Desktop-Erkennung: Display-Rotation anpassen ─────────────────────────
+# ── Display-Konfiguration ─────────────────────────────────────────────────
 
-step "Display-Umgebung wird erkannt…"
-
-IS_DESKTOP=false
-if dpkg -l 2>/dev/null | grep -qE 'labwc|openbox|lxde|wayfire|lightdm'; then
-    IS_DESKTOP=true
-fi
+step "Display-Umgebung wird konfiguriert…"
 
 if [[ "${IS_DESKTOP}" == "true" ]]; then
     info "Desktop-Umgebung erkannt (Wayland/X11)"
