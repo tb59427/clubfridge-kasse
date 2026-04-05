@@ -334,6 +334,10 @@ if [[ "${IS_DESKTOP}" == "true" ]]; then
     if ! grep -q "^DISPLAY_ROTATION=" "${ENV_FILE}" 2>/dev/null; then
         echo "DISPLAY_ROTATION=0" >> "${ENV_FILE}"
     fi
+    # Kein Fullscreen auf Desktop (Compositor handhabt Fenstergröße)
+    if ! grep -q "^FULLSCREEN=" "${ENV_FILE}" 2>/dev/null; then
+        echo "FULLSCREEN=false" >> "${ENV_FILE}"
+    fi
 else
     info "Headless-Umgebung erkannt (kein Desktop)"
     info "Display-Rotation wird von Kivy verwaltet (Standard: 180° für Touch Display 1)"
