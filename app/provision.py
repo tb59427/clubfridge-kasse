@@ -258,6 +258,17 @@ def write_env(
     env_path = get_env_file()
     env_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Bestehende Display-Einstellungen beibehalten (vom Install-Script gesetzt)
+    _existing_display = {}
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            for key in ("DISPLAY_ROTATION", "FULLSCREEN"):
+                if line.startswith(f"{key}="):
+                    _existing_display[key] = line.split("=", 1)[1]
+
+    _fullscreen = _existing_display.get("FULLSCREEN", "true")
+    _display_rotation = _existing_display.get("DISPLAY_ROTATION")
+
     content = (
         "# Automatisch generiert – Clubfridge Kassen-Einrichtung\n"
         f"# Datum: {datetime.date.today().isoformat()}\n\n"
@@ -274,8 +285,10 @@ def write_env(
         "LOCAL_DB_PATH=kasse_local.db\n"
         "SYNC_INTERVAL_SECONDS=60\n"
         "CACHE_REFRESH_INTERVAL_SECONDS=300\n\n"
-        "FULLSCREEN=true\n"
+        f"FULLSCREEN={_fullscreen}\n"
     )
+    if _display_rotation is not None:
+        content += f"DISPLAY_ROTATION={_display_rotation}\n"
 
     env_path.write_text(content, encoding="utf-8")
     log.info("Konfiguration geschrieben: %s", env_path)
