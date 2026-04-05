@@ -142,33 +142,10 @@ if [ -f "${CMDLINE}" ]; then
         fi
     fi
     if [ "${VARIANT}" != "pi3" ]; then
-        # Pi5/TD2: Console-Rotation via fbcon-rotate.service
-        # Hardcode 0 — das dtoverlay dreht Display+Touch auf Hardware-Ebene
-        install -d "${ROOTFS_DIR}/usr/local/bin"
-        cat > "${ROOTFS_DIR}/usr/local/bin/fbcon-rotate.sh" << 'FBEOF'
-#!/bin/bash
-echo 0 > /sys/class/graphics/fbcon/rotate_all
-FBEOF
-        chmod +x "${ROOTFS_DIR}/usr/local/bin/fbcon-rotate.sh"
-
-        cat > "${ROOTFS_DIR}/etc/systemd/system/fbcon-rotate.service" << 'FBSEOF'
-[Unit]
-Description=Rotate framebuffer console
-DefaultDependencies=no
-After=systemd-modules-load.service
-Before=getty@tty1.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/fbcon-rotate.sh
-
-[Install]
-WantedBy=sysinit.target
-FBSEOF
-
-        on_chroot << CHEOF
-systemctl enable fbcon-rotate.service
-CHEOF
+        # Pi5/TD2: Console-Rotation via cmdline.txt (fbcon=rotate:1 = 90° CW)
+        if ! grep -q 'fbcon=rotate' "${CMDLINE}"; then
+            sed -i 's/$/ fbcon=rotate:1/' "${CMDLINE}"
+        fi
     fi
 fi
 
@@ -223,9 +200,9 @@ BPEOF
     # .display_rotation_confirmed anlegen (kein Whiptail nötig)
     touch "${ROOTFS_DIR}${INSTALL_DIR}/.display_rotation_confirmed"
 
-    # Display-Einstellungen vorkonfigurieren (Hardware dreht, Kivy nicht)
+    # Display-Einstellungen vorkonfigurieren (KMSDRM: Kivy dreht Content)
     cat > "${ROOTFS_DIR}${INSTALL_DIR}/.env" << 'ENVEOF'
-DISPLAY_ROTATION=0
+DISPLAY_ROTATION=270
 FULLSCREEN=true
 ENVEOF
     chown 1000:1000 "${ROOTFS_DIR}${INSTALL_DIR}/.env"
