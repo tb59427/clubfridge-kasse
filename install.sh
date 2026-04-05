@@ -217,9 +217,13 @@ EOF
 fi
 
 systemctl daemon-reload
-systemctl enable "${SERVICE_NAME}@${SERVICE_USER}"
-
-info "Service aktiviert: ${SERVICE_NAME}@${SERVICE_USER}"
+# Service nur auf Headless aktivieren — Desktop nutzt Autostart
+if ! dpkg -l 2>/dev/null | grep -qE 'labwc|openbox|lxde|wayfire|lightdm'; then
+    systemctl enable "${SERVICE_NAME}@${SERVICE_USER}"
+    info "Service aktiviert: ${SERVICE_NAME}@${SERVICE_USER}"
+else
+    info "Service-Datei installiert (wird auf Desktop nicht automatisch gestartet)"
+fi
 
 # ── Automatischer Update-Timer einrichten ─────────────────────────────────────
 
