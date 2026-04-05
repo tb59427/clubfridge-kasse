@@ -31,8 +31,12 @@ if sys.platform == "linux":
         except Exception:
             pass
         Config.set("graphics", "rotation", _rotation)
-    # Fullscreen: immer auf Linux, außer FULLSCREEN=false in .env
-    if settings.fullscreen or not is_configured():
+    # Fullscreen: auf Headless immer (auch im Setup-Modus).
+    # Auf Desktop (FULLSCREEN=false in .env): nie, auch nicht im Setup-Modus.
+    if settings.fullscreen:
+        Config.set("graphics", "fullscreen", "auto")
+    elif not is_configured() and "WAYLAND_DISPLAY" not in os.environ:
+        # Headless Setup-Modus: Fullscreen erzwingen
         Config.set("graphics", "fullscreen", "auto")
 
 # Kein Multi-Touch-Emulation mit der Maus
