@@ -414,29 +414,12 @@ KMSEOF
     chown "${SERVICE_USER}:${SERVICE_USER}" "${ENV_FILE}"
     info ".env: DISPLAY_ROTATION=270, FULLSCREEN=true"
 
-    # fbcon-rotate Service (Console aufrecht)
-    cat > /usr/local/bin/fbcon-rotate.sh <<'FBEOF'
-#!/bin/bash
-echo 0 > /sys/class/graphics/fbcon/rotate_all
-FBEOF
-    chmod +x /usr/local/bin/fbcon-rotate.sh
-    cat > /etc/systemd/system/fbcon-rotate.service <<'FBSEOF'
-[Unit]
-Description=Rotate framebuffer console
-DefaultDependencies=no
-After=systemd-modules-load.service
-Before=getty@tty1.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/fbcon-rotate.sh
-
-[Install]
-WantedBy=sysinit.target
-FBSEOF
-    systemctl daemon-reload
-    systemctl enable fbcon-rotate.service
-    info "Console-Rotation konfiguriert"
+    # Console-Rotation 180° in cmdline.txt (wirkt ab erstem Boot-Frame)
+    CMDLINE="/boot/firmware/cmdline.txt"
+    if [[ -f "${CMDLINE}" ]] && ! grep -q 'fbcon=rotate' "${CMDLINE}"; then
+        sed -i 's/$/ fbcon=rotate:2/' "${CMDLINE}"
+    fi
+    info "Console-Rotation konfiguriert (fbcon=rotate:2)"
 
 elif [[ "${IS_DESKTOP}" == "true" ]]; then
     # ── Desktop + Landscape-Display (TD1, HDMI, etc.) ─────────────────
