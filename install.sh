@@ -373,10 +373,16 @@ if [[ "${IS_DESKTOP}" == "true" && "${IS_TD2}" == "true" ]]; then
         info "dtoverlay in config.txt eingetragen (wird nach Reboot aktiv)"
     fi
 
-    # Service-Override: lightdm stoppen + KMSDRM
+    # Service-Override: Unit-Dependencies überschreiben + lightdm stoppen + KMSDRM
+    # Wichtig: After=graphical-session.target ENTFERNEN, sonst stoppt systemd
+    # den Kasse-Service wenn lightdm (und damit die Session) gestoppt wird.
     OVERRIDE_DIR="/etc/systemd/system/${SERVICE_NAME}@.service.d"
     mkdir -p "${OVERRIDE_DIR}"
     cat > "${OVERRIDE_DIR}/kmsdrm.conf" <<'KMSEOF'
+[Unit]
+After=network-online.target
+Conflicts=lightdm.service
+
 [Service]
 ExecStartPre=/bin/bash -c 'systemctl stop lightdm 2>/dev/null; sleep 2; true'
 Environment=SDL_VIDEODRIVER=kmsdrm
