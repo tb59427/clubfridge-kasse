@@ -65,7 +65,7 @@ echo ""
 # ── Desktop-Erkennung (früh, wird überall im Script gebraucht) ──────────────
 
 IS_DESKTOP=false
-if dpkg -l 2>/dev/null | grep -qE 'labwc|openbox|lxde|wayfire|lightdm'; then
+if command -v labwc >/dev/null 2>&1 || command -v openbox >/dev/null 2>&1 || systemctl is-active --quiet lightdm 2>/dev/null; then
     IS_DESKTOP=true
 fi
 
@@ -225,7 +225,7 @@ fi
 
 systemctl daemon-reload
 # Service nur auf Headless aktivieren — Desktop nutzt Autostart
-if ! dpkg -l 2>/dev/null | grep -qE 'labwc|openbox|lxde|wayfire|lightdm'; then
+if [[ "${IS_DESKTOP}" != "true" ]]; then
     systemctl enable "${SERVICE_NAME}@${SERVICE_USER}"
     info "Service aktiviert: ${SERVICE_NAME}@${SERVICE_USER}"
 else
