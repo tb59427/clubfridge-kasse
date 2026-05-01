@@ -27,12 +27,14 @@ from app.api_client import ApiClient, AuthError
 from app.config import settings
 from app.local_db import (
     clear_all_caches,
+    get_cached_age_check_config,
     get_cached_lock_config,
     get_pending_bookings,
     mark_bookings_synced,
     replace_billing_targets,
     replace_member_cache,
     replace_product_cache,
+    save_age_check_config,
     save_lock_config,
     save_pending_booking,
 )
@@ -124,13 +126,17 @@ class SyncManager:
         replace_member_cache([
             {
                 "id": m.id, "name": m.name, "rfid_token": m.rfid_token,
+                "birthday": m.birthday, "is_billing_account": m.is_billing_account,
                 "billed_to_id": m.billed_to_id, "billed_to_name": m.billed_to_name,
             }
             for m in members
         ])
         if products is not None:
             replace_product_cache([
-                {"id": p.id, "name": p.name, "barcode": p.barcode, "price": str(p.price)}
+                {
+                    "id": p.id, "name": p.name, "barcode": p.barcode,
+                    "price": str(p.price), "age_category": p.age_category,
+                }
                 for p in products
             ])
 
@@ -162,6 +168,12 @@ class SyncManager:
 
         new_lock = config.get("lock")
         save_lock_config(new_lock)
+
+        # Jugendschutz-Konfiguration vom Server übernehmen
+        save_age_check_config(
+            enabled=bool(config.get("age_check_enabled", False)),
+            limits=config.get("age_limits", {}) or {},
+        )
 
         # Hot-Swap: Lock-Treiber austauschen wenn sich die Config geändert hat
         new_json = json.dumps(new_lock, sort_keys=True) if new_lock else None

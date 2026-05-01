@@ -40,6 +40,8 @@ class RemoteMember:
     id: str
     name: str
     rfid_token: str | None
+    birthday: str | None = None  # ISO-Date YYYY-MM-DD
+    is_billing_account: bool = False
     billed_to_id: str | None = None
     billed_to_name: str | None = None
 
@@ -50,6 +52,7 @@ class RemoteProduct:
     name: str
     barcode: str | None
     price: Decimal
+    age_category: str = "none"
 
 
 class ApiClient:
@@ -106,6 +109,8 @@ class ApiClient:
                     id=m["id"],
                     name=m["name"],
                     rfid_token=m.get("rfid_token"),
+                    birthday=m.get("birthday"),
+                    is_billing_account=bool(m.get("is_billing_account", False)),
                     billed_to_id=m.get("billed_to_id"),
                     billed_to_name=m.get("billed_to_name"),
                 )
@@ -124,6 +129,7 @@ class ApiClient:
                     name=p["name"],
                     barcode=p.get("barcode"),
                     price=Decimal(str(p["price"])),
+                    age_category=p.get("age_category", "none"),
                 )
                 for p in r.json()
             ]

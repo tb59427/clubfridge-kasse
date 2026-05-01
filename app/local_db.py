@@ -14,7 +14,7 @@ from decimal import Decimal
 
 import logging
 
-from sqlalchemy import Boolean, Column, DateTime, Numeric, String, Text, create_engine, inspect, text
+from sqlalchemy import Boolean, Column, Date, DateTime, Numeric, String, Text, create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 log = logging.getLogger(__name__)
@@ -32,6 +32,8 @@ class CachedMember(Base):
     id = Column(String(36), primary_key=True)
     name = Column(String(200), nullable=False)
     rfid_token = Column(String(100), unique=True, nullable=True)
+    birthday = Column(Date, nullable=True)
+    is_billing_account = Column(Boolean, nullable=False, default=False)
     billed_to_id = Column(String(36), nullable=True)
     billed_to_name = Column(String(200), nullable=True)
     synced_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -47,6 +49,7 @@ class CachedProduct(Base):
     name = Column(String(200), nullable=False)
     barcode = Column(String(50), unique=True, nullable=True)
     price = Column(Numeric(10, 2), nullable=False)
+    age_category = Column(String(20), nullable=False, default="none")
     synced_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self) -> str:
@@ -226,13 +229,23 @@ def cleanup_synced_bookings() -> None:
 
 
 def replace_member_cache(members: list[dict]) -> None:
+    from datetime import date as _date
     with get_session() as db:
         db.query(CachedMember).delete()
         for m in members:
+            bd_raw = m.get("birthday")
+            bd: _date | None = None
+            if bd_raw:
+                try:
+                    bd = _date.fromisoformat(bd_raw[:10]) if isinstance(bd_raw, str) else bd_raw
+                except (ValueError, TypeError):
+                    bd = None
             db.add(CachedMember(
                 id=m["id"],
                 name=m["name"],
                 rfid_token=m.get("rfid_token"),
+                birthday=bd,
+                is_billing_account=bool(m.get("is_billing_account", False)),
                 billed_to_id=m.get("billed_to_id"),
                 billed_to_name=m.get("billed_to_name"),
             ))
@@ -247,6 +260,7 @@ def replace_product_cache(products: list[dict]) -> None:
                 name=p["name"],
                 barcode=p.get("barcode"),
                 price=Decimal(str(p["price"])),
+                age_category=p.get("age_category", "none"),
             ))
 
 
@@ -285,6 +299,26 @@ def get_cached_lock_config() -> dict | None:
         if row:
             return json.loads(row.value)
     return None
+
+
+def save_age_check_config(enabled: bool, limits: dict[str, int]) -> None:
+    """Jugendschutz-Konfiguration vom Server lokal speichern."""
+    payload = {"enabled": bool(enabled), "limits": {k: int(v) for k, v in (limits or {}).items()}}
+    with get_session() as db:
+        db.query(CachedConfig).filter_by(key="age_check").delete()
+        db.add(CachedConfig(key="age_check", value=json.dumps(payload)))
+
+
+def get_cached_age_check_config() -> dict:
+    """Aktuelle Jugendschutz-Config (oder Default: deaktiviert)."""
+    with get_session() as db:
+        row = db.query(CachedConfig).filter_by(key="age_check").first()
+        if row:
+            try:
+                return json.loads(row.value)
+            except Exception:
+                pass
+    return {"enabled": False, "limits": {}}
 
 
 # ---------------------------------------------------------------------------

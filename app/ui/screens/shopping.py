@@ -418,6 +418,18 @@ class ShoppingScreen(Screen):
             self._show_error(f"Unbekannter Barcode: {barcode}")
             return
 
+        # Jugendschutz-Check beim Scan — bevor das Produkt in den Cart kommt
+        if self._member is not None:
+            from app.age_check import check_age_for_purchase
+            block_reason = check_age_for_purchase(
+                purchaser=self._member,
+                products=[product],
+            )
+            if block_reason:
+                log.info("Scan blockiert (Jugendschutz): %s — %s", product.name, block_reason)
+                self._show_error_popup("Kauf nicht möglich", block_reason)
+                return
+
         # Bereits im Cart? → Menge erhöhen
         for item in self._cart:
             if item.product_id == product.id:
@@ -444,6 +456,24 @@ class ShoppingScreen(Screen):
         if not self._cart or self._member is None:
             return
 
+        # Jugendschutz-Prüfung (nur aktiv wenn auf Tenant aktiviert)
+        from app.age_check import check_age_for_purchase
+        from app.local_db import get_session, CachedProduct
+        with get_session() as db:
+            cart_products = (
+                db.query(CachedProduct)
+                .filter(CachedProduct.id.in_([i.product_id for i in self._cart]))
+                .all()
+            )
+        block_reason = check_age_for_purchase(
+            purchaser=self._member,
+            products=cart_products,
+        )
+        if block_reason:
+            log.info("Kauf blockiert (Jugendschutz): %s", block_reason)
+            self._show_error_popup("Kauf nicht möglich", block_reason)
+            return
+
         items = [
             {
                 "product_id": item.product_id,
@@ -468,6 +498,28 @@ class ShoppingScreen(Screen):
         log.info("Buchung abgeschlossen: %s × %d Positionen = %s €",
                  self._member.name, len(items), total)
         self._end_session()
+
+    def _show_error_popup(self, title: str, message: str) -> None:
+        """Modaler Hinweis bei blockiertem Kauf."""
+        from kivy.uix.popup import Popup
+        from kivy.uix.button import Button
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.label import Label
+
+        layout = BoxLayout(orientation="vertical", padding=20, spacing=15)
+        layout.add_widget(Label(text=message, halign="center", valign="middle", text_size=(380, None)))
+        btn = Button(text="OK", size_hint_y=None, height=60)
+        layout.add_widget(btn)
+
+        popup = Popup(
+            title=title,
+            content=layout,
+            size_hint=(None, None),
+            size=(440, 300),
+            auto_dismiss=False,
+        )
+        btn.bind(on_release=popup.dismiss)
+        popup.open()
 
     def cancel(self) -> None:
         log.info("Kaufvorgang abgebrochen: %s", self._member.name if self._member else "?")
