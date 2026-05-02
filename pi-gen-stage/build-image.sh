@@ -6,11 +6,12 @@
 #
 # Aufruf:
 #   cd kasse/pi-gen-stage
-#   ./build-image.sh pi3      # Bookworm – Pi 3/4 + Touch Display 1
-#   ./build-image.sh pi5      # Trixie   – Pi 5   + Touch Display 2
-#   ./build-image.sh all      # Beide Images nacheinander
+#   ./build-image.sh pi3      # Bookworm – Pi 3 + Touch Display 1
+#   ./build-image.sh pi4      # Bookworm – Pi 4 + Touch Display 1
+#   ./build-image.sh pi5      # Trixie   – Pi 5 + Touch Display 2
+#   ./build-image.sh all      # Alle drei Images nacheinander
 #
-# Output: ~/clubfridge-image-pi3.zip  bzw.  ~/clubfridge-image-pi5.zip
+# Output: ~/clubfridge-image-{pi3,pi4,pi5}.zip
 # ──────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
@@ -20,20 +21,21 @@ PIGEN_DIR="${HOME}/.clubfridge-pi-gen"
 
 TARGET="${1:-}"
 if [[ -z "$TARGET" ]]; then
-    echo "Aufruf: $0 <pi3|pi5|all>"
-    echo "  pi3  – Bookworm (Pi 3/4 + Touch Display 1)"
-    echo "  pi5  – Trixie   (Pi 5   + Touch Display 2)"
-    echo "  all  – Beide Images nacheinander"
+    echo "Aufruf: $0 <pi3|pi4|pi5|all>"
+    echo "  pi3  – Bookworm (Pi 3 + Touch Display 1)"
+    echo "  pi4  – Bookworm (Pi 4 + Touch Display 1)"
+    echo "  pi5  – Trixie   (Pi 5 + Touch Display 2)"
+    echo "  all  – Alle drei Images nacheinander"
     exit 1
 fi
 
 build_image() {
-    local VARIANT="$1"  # pi3 oder pi5
+    local VARIANT="$1"  # pi3, pi4 oder pi5
 
-    if [[ "$VARIANT" == "pi3" ]]; then
+    if [[ "$VARIANT" == "pi3" || "$VARIANT" == "pi4" ]]; then
         PIGEN_TAG="2025-11-24-raspios-bookworm-arm64"
         RELEASE="bookworm"
-        IMG_SUFFIX="pi3"
+        IMG_SUFFIX="$VARIANT"
     elif [[ "$VARIANT" == "pi5" ]]; then
         PIGEN_TAG="arm64"  # master branch = Trixie
         RELEASE="trixie"
@@ -124,10 +126,11 @@ EOF
 
 if [[ "$TARGET" == "all" ]]; then
     build_image "pi3"
+    build_image "pi4"
     build_image "pi5"
-elif [[ "$TARGET" == "pi3" || "$TARGET" == "pi5" ]]; then
+elif [[ "$TARGET" == "pi3" || "$TARGET" == "pi4" || "$TARGET" == "pi5" ]]; then
     build_image "$TARGET"
 else
-    echo "Unbekanntes Ziel: $TARGET (pi3, pi5 oder all)"
+    echo "Unbekanntes Ziel: $TARGET (pi3, pi4, pi5 oder all)"
     exit 1
 fi

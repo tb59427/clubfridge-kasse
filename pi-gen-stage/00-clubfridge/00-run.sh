@@ -6,8 +6,9 @@
 # Dateien ins Image via ${ROOTFS_DIR} Prefix.
 #
 # VARIANT wird aus der Datei VARIANT gelesen (vom build-image.sh geschrieben):
-#   pi3 = Bookworm Lite (Pi 3/4 + Touch Display 1)
-#   pi5 = Trixie Lite   (Pi 5   + Touch Display 2)
+#   pi3 = Bookworm Lite (Pi 3 + Touch Display 1)
+#   pi4 = Bookworm Lite (Pi 4 + Touch Display 1)
+#   pi5 = Trixie Lite   (Pi 5 + Touch Display 2)
 # ──────────────────────────────────────────────────────────────────────────────
 
 INSTALL_DIR="/opt/clubfridge/kasse"
@@ -88,16 +89,19 @@ CHEOF
 
 # ── Display-Konfiguration (Hardware-Ebene) ───────────────────────────────────
 #
-# KEINE Software-Rotation (kein Kivy-Rotation, kein xrandr, kein wlr-randr).
-# Alles über config.txt + cmdline.txt auf Hardware-Ebene.
+# KEINE Software-Rotation per xrandr/wlr-randr. Rotation läuft pro Variante
+# unterschiedlich:
 #
-# Touch Display 1 (800x480, FT5406) — Pi 3 / Pi 4:
-#   - display_auto_detect=1 (default, erkennt TD1 automatisch)
-#   - Display-Rotation 180°: video=DSI-1:800x480@60,rotate=180 in cmdline.txt
-#     (Standard-Pi-Gehäuse hat TD1 kopfüber montiert. Wirkt auf DRM-Ebene
-#      → Boot-Logo, Console und Kasse sind korrekt orientiert. Mit
-#      vc4-kms-v3d wäre fbcon=rotate:N ohne Effekt.)
-#   - Touch-Rotation: Kivy MTD invert_x/y (DRM rotiert nur Display, nicht Touch)
+# Touch Display 1 (800x480, FT5406):
+#   Pi 3 (legacy KMS-Pfad):
+#     - fbcon=rotate:2 (rotiert Console)
+#     - Kivy software rotation=180 (rotiert Kasse + Touch zusammen)
+#   Pi 4 (modern KMS, fbcon=rotate ineffektiv):
+#     - video=DSI-1:800x480@60,rotate=180 (DRM rotiert DSI-Plane)
+#     - fbcon=rotate:2 (Console-Rotation für die Sekunden vor DRM-Init)
+#     - Kivy software rotation=180 zusätzlich (SDL2 bekommt DRM-Rotation
+#       in der Praxis nicht zuverlässig durchgereicht)
+#     - INVERT_TOUCH=true (DRM rotiert Touch nicht mit)
 #
 # Touch Display 2 (720x1280, Goodix) — Pi 5:
 #   - Display+Touch: dtoverlay=vc4-kms-dsi-ili9881-7inch,rotation=270
@@ -111,10 +115,7 @@ if [ -f "${BOOT_CONFIG}" ]; then
     # I2C aktivieren (Touch Display 2 Goodix Controller)
     sed -i 's/^#dtparam=i2c_arm=on/dtparam=i2c_arm=on/' "${BOOT_CONFIG}"
 
-    if [ "${VARIANT}" = "pi3" ]; then
-        # display_auto_detect=1 reicht — TD1 wird automatisch erkannt
-        :
-    else
+    if [ "${VARIANT}" = "pi5" ]; then
         # display_auto_detect deaktivieren (TD2 braucht manuelles Overlay)
         sed -i 's/^display_auto_detect=1/display_auto_detect=0/' "${BOOT_CONFIG}"
         # ── Touch Display 2: Overlay mit Display+Touch-Rotation ──────
@@ -122,6 +123,7 @@ if [ -f "${BOOT_CONFIG}" ]; then
         echo "# Clubfridge: Touch Display 2 (270° für Landscape)" >> "${BOOT_CONFIG}"
         echo "dtoverlay=vc4-kms-dsi-ili9881-7inch,rotation=270" >> "${BOOT_CONFIG}"
     fi
+    # pi3 + pi4: display_auto_detect=1 reicht (TD1 wird automatisch erkannt)
 fi
 
 # ── cmdline.txt: Display-Rotation + Console-Rotation + WiFi Regulatory Domain
@@ -133,10 +135,12 @@ if [ -f "${CMDLINE}" ]; then
     fi
 
     if [ "${VARIANT}" = "pi3" ]; then
-        # Display 180° drehen (TD1 ist im Standard-Gehäuse kopfüber montiert).
-        # Empirisch: video=DSI-1:WxH@F,rotate=180 dreht Boot-Logo + Kasse-Plane,
-        # fbcon=rotate:2 dreht zusätzlich die Linux-Text-Console. Beide nötig für
-        # einheitlich richtig orientierten Bildschirm.
+        # Pi 3 + TD1: nur fbcon=rotate:2; Kivy macht den Rest in Software.
+        if ! grep -q 'fbcon=rotate' "${CMDLINE}"; then
+            sed -i 's/$/ fbcon=rotate:2/' "${CMDLINE}"
+        fi
+    elif [ "${VARIANT}" = "pi4" ]; then
+        # Pi 4 + TD1: DRM rotiert die Plane, fbcon zusätzlich die Console.
         if ! grep -q 'video=DSI-1' "${CMDLINE}"; then
             sed -i 's/$/ video=DSI-1:800x480@60,rotate=180/' "${CMDLINE}"
         fi
@@ -147,9 +151,8 @@ if [ -f "${CMDLINE}" ]; then
         if [ -f "${BOOT_CONFIG}" ]; then
             sed -i 's/auto_initramfs=1/auto_initramfs=0/' "${BOOT_CONFIG}"
         fi
-    fi
-    if [ "${VARIANT}" != "pi3" ]; then
-        # Pi5/TD2: Console-Rotation via cmdline.txt (fbcon=rotate:1 = 90° CW)
+    else
+        # Pi 5 / TD2: Console-Rotation via cmdline.txt (fbcon=rotate:1 = 90° CW)
         if ! grep -q 'fbcon=rotate' "${CMDLINE}"; then
             sed -i 's/$/ fbcon=rotate:1/' "${CMDLINE}"
         fi
@@ -187,19 +190,21 @@ touch "${ROOTFS_DIR}${INSTALL_DIR}/.display_rotation_confirmed"
 chown 1000:1000 "${ROOTFS_DIR}${INSTALL_DIR}/.display_rotation_confirmed"
 
 if [ "${VARIANT}" = "pi3" ]; then
-    # Pi3/Pi4 + TD1:
-    # - DRM rotiert die DSI-Plane (Boot-Logo + Kasse) per video=…,rotate=180
-    # - SDL2/Kivy bekommt das auf manchen Pi-Bookworm-Setups jedoch nicht mit;
-    #   deshalb zusätzlich Kivy software rotation=180 (doppelt-rotiert greift
-    #   in der Praxis korrekt — Symptom des Render-Pfads bei vc4-kms-v3d).
-    # - INVERT_TOUCH dreht die MTD-Koordinaten 180° (DRM rotiert Touch nicht mit)
+    # Pi 3 + TD1: Kivy rotation=180 dreht Display + Touch zusammen
+    cat > "${ROOTFS_DIR}${INSTALL_DIR}/.env" << 'ENVEOF'
+DISPLAY_ROTATION=180
+FULLSCREEN=true
+ENVEOF
+elif [ "${VARIANT}" = "pi4" ]; then
+    # Pi 4 + TD1: DRM dreht Plane, Kivy rotation=180 zusätzlich (SDL2-Pfad);
+    # Touch wird durch INVERT_TOUCH separat gespiegelt
     cat > "${ROOTFS_DIR}${INSTALL_DIR}/.env" << 'ENVEOF'
 DISPLAY_ROTATION=180
 FULLSCREEN=true
 INVERT_TOUCH=true
 ENVEOF
 else
-    # Pi5 + TD2: dtoverlay rotiert Display+Touch zusammen
+    # Pi 5 + TD2: dtoverlay rotiert Display+Touch zusammen
     cat > "${ROOTFS_DIR}${INSTALL_DIR}/.env" << 'ENVEOF'
 DISPLAY_ROTATION=270
 FULLSCREEN=true
