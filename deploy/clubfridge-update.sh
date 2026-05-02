@@ -19,6 +19,10 @@ SERVICE_USER="${1:-pi}"
 SERVICE_NAME="clubfridge-kasse"
 BRANCH="main"
 
+# Service läuft als root, Repo gehört dem Service-User → modern Git blockt
+# "dubious ownership". Wir setzen safe.directory bei jedem git-Aufruf via -c.
+GIT="git -c safe.directory=${INSTALL_DIR}"
+
 log()  { echo "[clubfridge-update] $*"; }
 info() { echo "[clubfridge-update] ✓ $*"; }
 warn() { echo "[clubfridge-update] ! $*" >&2; }
@@ -75,13 +79,14 @@ log "Update-Check gestartet ($(date '+%Y-%m-%d %H:%M:%S'))"
 ensure_pi5_gpio
 
 # Netzwerk kurz abwarten (bei frühem Timer-Start)
-if ! git -C "${INSTALL_DIR}" fetch --quiet origin "${BRANCH}" 2>/dev/null; then
-    warn "git fetch fehlgeschlagen – kein Netzwerk? Update wird übersprungen."
+# Stderr NICHT unterdrücken — sonst werden echte Git-Fehler still geschluckt.
+if ! ${GIT} -C "${INSTALL_DIR}" fetch --quiet origin "${BRANCH}"; then
+    warn "git fetch fehlgeschlagen – Update wird übersprungen."
     exit 0
 fi
 
-BEFORE=$(git -C "${INSTALL_DIR}" rev-parse HEAD)
-AFTER=$(git -C "${INSTALL_DIR}" rev-parse "origin/${BRANCH}")
+BEFORE=$(${GIT} -C "${INSTALL_DIR}" rev-parse HEAD)
+AFTER=$(${GIT} -C "${INSTALL_DIR}" rev-parse "origin/${BRANCH}")
 
 if [[ "${BEFORE}" == "${AFTER}" ]]; then
     if [[ "$PI5_FIX_APPLIED" == "true" ]]; then
@@ -97,7 +102,7 @@ log "Update verfügbar: ${BEFORE:0:8} → ${AFTER:0:8}"
 # ── Rollback-Funktion ────────────────────────────────────────────────────────
 rollback() {
     warn "Rollback auf ${BEFORE:0:8} …"
-    git -C "${INSTALL_DIR}" reset --hard "${BEFORE}" --quiet
+    ${GIT} -C "${INSTALL_DIR}" reset --hard "${BEFORE}" --quiet
     "${VENV}/bin/pip" install -e "${INSTALL_DIR}[pi]" --quiet 2>/dev/null || true
     ensure_pi5_gpio
     chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
@@ -111,7 +116,7 @@ rollback() {
 }
 
 # Code aktualisieren
-git -C "${INSTALL_DIR}" reset --hard "origin/${BRANCH}" --quiet
+${GIT} -C "${INSTALL_DIR}" reset --hard "origin/${BRANCH}" --quiet
 log "Code aktualisiert"
 
 # Python-Abhängigkeiten aktualisieren (nur wenn sich pyproject.toml geändert hat)

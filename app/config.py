@@ -33,7 +33,12 @@ class Settings(BaseSettings):
     fullscreen: bool = True
     window_width: int = 800
     window_height: int = 480
-    display_rotation: int = 270  # 0, 90, 180, 270 – für Pi Touch Display im Standard-Gehäuse
+    display_rotation: int = 270  # 0, 90, 180, 270 – Kivy-Software-Rotation
+    # Touch-Inversion (180°-Rotation der Touch-Koordinaten).
+    # Nötig wenn die Display-Rotation per DRM/Kernel-cmdline gemacht wird —
+    # die Touch-Eingabe wird davon nicht mit-rotiert. Setzt invert_x/y im
+    # Kivy MTD-Provider.
+    invert_touch: bool = False
 
 
 settings = Settings()

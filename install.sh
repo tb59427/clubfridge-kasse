@@ -143,8 +143,9 @@ step "Kassen-Software wird heruntergeladen…"
 
 if [[ -d "${INSTALL_DIR}/.git" ]]; then
     info "Vorhandene Installation gefunden – wird aktualisiert"
-    git -C "${INSTALL_DIR}" fetch --quiet origin "${REPO_BRANCH}"
-    git -C "${INSTALL_DIR}" reset --hard "origin/${REPO_BRANCH}" --quiet
+    # safe.directory: install.sh läuft als root, Repo gehört SERVICE_USER
+    git -c "safe.directory=${INSTALL_DIR}" -C "${INSTALL_DIR}" fetch --quiet origin "${REPO_BRANCH}"
+    git -c "safe.directory=${INSTALL_DIR}" -C "${INSTALL_DIR}" reset --hard "origin/${REPO_BRANCH}" --quiet
 else
     info "Klone Repository von ${REPO_URL}…"
     git clone --depth=1 --branch "${REPO_BRANCH}" "${REPO_URL}.git" "${INSTALL_DIR}" --quiet

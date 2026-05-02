@@ -35,6 +35,17 @@ if sys.platform == "linux":
 # Kein Multi-Touch-Emulation mit der Maus
 Config.set("input", "mouse", "mouse,disable_multitouch")
 
+# Touch-Provider: ggf. invert_x/y wenn Display per DRM rotiert wird.
+# (Sonst greifen die rotierten Touch-Koordinaten nicht zur sichtbaren UI.)
+if settings.invert_touch:
+    Config.set(
+        "input",
+        "%(name)s",
+        "probesysfs,provider=mtdev,param=invert_x=1,param=invert_y=1",
+    )
+else:
+    Config.set("input", "%(name)s", "probesysfs,provider=mtdev")
+
 # Mauszeiger auf Touchscreens ausblenden
 if sys.platform == "linux":
     Config.set("graphics", "show_cursor", "0")
