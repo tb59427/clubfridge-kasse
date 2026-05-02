@@ -27,10 +27,15 @@ SERVICE_NAME="clubfridge-kasse"
 # Benutzer unter dem die Kasse laufen soll (Standard: aktueller SUDO_USER)
 SERVICE_USER="${SUDO_USER:-${USER:-pi}}"
 
-# --reset: Konfiguration löschen → Einrichtungs-Assistent beim nächsten Start
+# --reset:        Konfiguration komplett löschen (.env weg, Setup-Wizard neu)
+# --reconfigure:  Display-/Service-Konfiguration neu anwenden, aber Server-URL,
+#                 Tenant und API-Key beibehalten — gut zum Reparieren einer
+#                 fehlerhaften Installation, ohne die Kasse neu zu provisionieren.
 RESET=false
+RECONFIGURE=false
 for arg in "$@"; do
     [[ "${arg}" == "--reset" ]] && RESET=true
+    [[ "${arg}" == "--reconfigure" ]] && RECONFIGURE=true
 done
 
 # ── Farben ────────────────────────────────────────────────────────────────────
@@ -190,11 +195,13 @@ info "Python-Abhängigkeiten installiert"
 
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 
-# ── Update-Modus: bestehende Installation, kein --reset ─────────────────────
+# ── Update-Modus: bestehende Installation, kein --reset/--reconfigure ──────
 # Code + Abhängigkeiten sind aktualisiert. Service-Datei, USB-/Display-/WiFi-
 # Konfiguration bleiben unverändert (die gehören zum Erst-Install und können
-# vom Anwender händisch angepasst worden sein).
-if [[ "${IS_UPDATE}" == "true" && "${RESET}" != "true" ]]; then
+# vom Anwender händisch angepasst worden sein). Mit --reconfigure läuft
+# install.sh komplett durch (für reparaturbedürftige Installationen), die
+# .env wird dabei gemerged statt gelöscht.
+if [[ "${IS_UPDATE}" == "true" && "${RESET}" != "true" && "${RECONFIGURE}" != "true" ]]; then
     if systemctl is-active --quiet "${SERVICE_NAME}@${SERVICE_USER}"; then
         info "Kassen-Service wird mit der neuen Version neu gestartet…"
         systemctl restart "${SERVICE_NAME}@${SERVICE_USER}"
@@ -202,9 +209,13 @@ if [[ "${IS_UPDATE}" == "true" && "${RESET}" != "true" ]]; then
     echo ""
     echo "════════════════════════════════════════════════════════════════"
     echo "  Update abgeschlossen. Konfiguration und Cache bleiben erhalten."
+    echo "  Komplett-Reinstall der Konfig: bash -s -- --reconfigure"
     echo "════════════════════════════════════════════════════════════════"
     echo ""
     exit 0
+fi
+if [[ "${RECONFIGURE}" == "true" ]]; then
+    info "--reconfigure: Display-/Service-Konfig wird neu angewendet (Server-Daten bleiben)"
 fi
 
 # ── systemd-Service installieren ─────────────────────────────────────────────
@@ -542,7 +553,10 @@ echo ""
 echo "  Nach der Einrichtung startet die Kasse automatisch."
 echo "  Gerätepfade werden automatisch erkannt und in .env gespeichert."
 echo ""
-echo "  Neu einrichten (anderer Tenant oder neue Kasse):"
+echo "  Konfiguration reparieren (Display, Service – Tenant/API-Key bleiben):"
+echo "     curl -fsSL https://install.clubfridge.de | sudo bash -s -- --reconfigure"
+echo ""
+echo "  Neu einrichten (anderer Tenant oder neue Kasse, .env wird gelöscht):"
 echo "     curl -fsSL https://install.clubfridge.de | sudo bash -s -- --reset"
 echo ""
 echo "  Logs verfolgen:"
