@@ -141,8 +141,10 @@ mkdir -p "${INSTALL_DIR}"
 
 step "Kassen-Software wird heruntergeladen…"
 
+IS_UPDATE=false
 if [[ -d "${INSTALL_DIR}/.git" ]]; then
     info "Vorhandene Installation gefunden – wird aktualisiert"
+    IS_UPDATE=true
     # safe.directory: install.sh läuft als root, Repo gehört SERVICE_USER
     git -c "safe.directory=${INSTALL_DIR}" -C "${INSTALL_DIR}" fetch --quiet origin "${REPO_BRANCH}"
     git -c "safe.directory=${INSTALL_DIR}" -C "${INSTALL_DIR}" reset --hard "origin/${REPO_BRANCH}" --quiet
@@ -187,6 +189,23 @@ info "Python-Abhängigkeiten installiert"
 # ── Berechtigungen setzen ─────────────────────────────────────────────────────
 
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
+
+# ── Update-Modus: bestehende Installation, kein --reset ─────────────────────
+# Code + Abhängigkeiten sind aktualisiert. Service-Datei, USB-/Display-/WiFi-
+# Konfiguration bleiben unverändert (die gehören zum Erst-Install und können
+# vom Anwender händisch angepasst worden sein).
+if [[ "${IS_UPDATE}" == "true" && "${RESET}" != "true" ]]; then
+    if systemctl is-active --quiet "${SERVICE_NAME}@${SERVICE_USER}"; then
+        info "Kassen-Service wird mit der neuen Version neu gestartet…"
+        systemctl restart "${SERVICE_NAME}@${SERVICE_USER}"
+    fi
+    echo ""
+    echo "════════════════════════════════════════════════════════════════"
+    echo "  Update abgeschlossen. Konfiguration und Cache bleiben erhalten."
+    echo "════════════════════════════════════════════════════════════════"
+    echo ""
+    exit 0
+fi
 
 # ── systemd-Service installieren ─────────────────────────────────────────────
 
