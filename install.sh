@@ -278,31 +278,9 @@ systemctl start  "clubfridge-update@${SERVICE_USER}.timer"
 
 info "Update-Timer aktiv (täglich 03:00 Uhr): clubfridge-update@${SERVICE_USER}.timer"
 
-# ── Desktop-Autostart (optional, falls kein Display-Manager vorhanden) ────────
-
-if [[ "${IS_DESKTOP}" == "true" ]]; then
-    # Desktop: Kasse als Desktop-App starten (erbt Wayland/X11 Umgebung)
-    # systemd-Service deaktivieren (würde ohne Display-Zugriff laufen)
-    systemctl disable "${SERVICE_NAME}@${SERVICE_USER}" 2>/dev/null || true
-
-    AUTOSTART_DIR="/home/${SERVICE_USER}/.config/autostart"
-    AUTOSTART_FILE="${AUTOSTART_DIR}/clubfridge-kasse.desktop"
-    step "Desktop-Autostart wird eingerichtet…"
-    mkdir -p "${AUTOSTART_DIR}"
-    cat > "${AUTOSTART_FILE}" <<EOF
-[Desktop Entry]
-Type=Application
-Name=Clubfridge Kasse
-Exec=env SDL_VIDEODRIVER=x11 KIVY_NO_ENV_CONFIG=1 ${VENV}/bin/python ${INSTALL_DIR}/main.py
-Path=${INSTALL_DIR}
-Hidden=false
-NoDisplay=false
-X-GNOME-Autostart-enabled=true
-EOF
-    chown -R "${SERVICE_USER}:${SERVICE_USER}" "${AUTOSTART_DIR}"
-    info "Desktop-Autostart eingerichtet (Kasse startet als Desktop-App)"
-    info "Service deaktiviert (nicht nötig auf Desktop)"
-fi
+# Desktop-Autostart-Datei (von älteren Installationen) entfernen — wir nutzen
+# einheitlich den Service-Mode (siehe Display-Konfiguration unten).
+rm -f "/home/${SERVICE_USER}/.config/autostart/clubfridge-kasse.desktop" 2>/dev/null || true
 
 # ── Hardware-Erkennung (informativ) ──────────────────────────────────────────
 
@@ -354,151 +332,156 @@ warn "Die Gerätepfade werden automatisch beim Einrichtungs-Assistenten"
 warn "erkannt und in die .env geschrieben. Falls die Geräte jetzt noch"
 warn "nicht angeschlossen sind, bitte VOR dem ersten Start anstecken."
 
-# ── Display-Erkennung ─────────────────────────────────────────────────────
+# ── Pi-Modell + Display erkennen ──────────────────────────────────────────
 
-step "Display wird erkannt…"
+step "Pi-Modell und Display werden erkannt…"
+
+PI_MODEL_RAW=""
+[[ -r /proc/device-tree/model ]] && PI_MODEL_RAW="$(tr -d '\0' < /proc/device-tree/model 2>/dev/null)"
+PI_MODEL="unknown"
+case "${PI_MODEL_RAW}" in
+    *"Pi 3"*) PI_MODEL="pi3" ;;
+    *"Pi 4"*) PI_MODEL="pi4" ;;
+    *"Pi 5"*) PI_MODEL="pi5" ;;
+esac
+info "Pi-Modell: ${PI_MODEL_RAW:-unbekannt} (Variante: ${PI_MODEL})"
 
 DSI_MODE=$(cat /sys/class/drm/card*-DSI*/modes 2>/dev/null | head -1)
-IS_TD2=false
-IS_TD1=false
-if [[ "${DSI_MODE}" == "720x1280" ]]; then
-    IS_TD2=true
-    info "Touch Display 2 erkannt (720x1280, DSI)"
-elif [[ "${DSI_MODE}" == "800x480" ]]; then
-    IS_TD1=true
-    info "Touch Display 1 erkannt (800x480, DSI)"
-elif [[ -n "${DSI_MODE}" ]]; then
-    info "DSI-Display erkannt: ${DSI_MODE}"
-else
-    info "Kein DSI-Display erkannt (HDMI oder anderes Display)"
-fi
+DISPLAY_TYPE="other"
+case "${DSI_MODE}" in
+    "720x1280") DISPLAY_TYPE="td2"; info "Touch Display 2 erkannt (720x1280, DSI)" ;;
+    "800x480")  DISPLAY_TYPE="td1"; info "Touch Display 1 erkannt (800x480, DSI)" ;;
+    "")         info "Kein DSI-Display erkannt (HDMI oder anderes Display)" ;;
+    *)          info "DSI-Display erkannt: ${DSI_MODE}" ;;
+esac
 
-# ── Display-Konfiguration ─────────────────────────────────────────────────
+# ── Display-Konfiguration (vereinheitlicht: immer Service-Mode) ──────────
+#
+# Egal ob Desktop oder Lite installiert wurde — die Kasse läuft im Service-
+# Mode mit modell-spezifischer Hardware-Rotation. Pi-OS-Desktop wird
+# (falls vorhanden) deaktiviert, damit die Kasse das Display exklusiv via
+# KMSDRM bekommt. Kompatibel zum Golden-Image-Verhalten.
 
 step "Display-Umgebung wird konfiguriert…"
 
-if [[ "${IS_DESKTOP}" == "true" && "${IS_TD2}" == "true" ]]; then
-    # ── Desktop + Touch Display 2 (Portrait-Panel, 720x1280) ─────────
-    # lightdm stoppen → KMSDRM → Kivy rotation=270 für Landscape.
-    # dtoverlay in config.txt für Touch-Rotation (Touch dreht mit Display).
-    info "Desktop + Touch Display 2: KMSDRM-Modus"
+BOOT_CONFIG="/boot/firmware/config.txt"
+CMDLINE="/boot/firmware/cmdline.txt"
 
-    # dtoverlay in config.txt (Touch-Koordinaten drehen)
-    BOOT_CONFIG="/boot/firmware/config.txt"
-    if [[ -f "${BOOT_CONFIG}" ]] && ! grep -q "vc4-kms-dsi-ili9881-7inch" "${BOOT_CONFIG}"; then
-        sed -i 's/^display_auto_detect=1/display_auto_detect=0/' "${BOOT_CONFIG}"
-        echo "" >> "${BOOT_CONFIG}"
-        echo "# Clubfridge: Touch Display 2" >> "${BOOT_CONFIG}"
-        echo "dtoverlay=vc4-kms-dsi-ili9881-7inch,rotation=270" >> "${BOOT_CONFIG}"
-        info "dtoverlay in config.txt eingetragen (wird nach Reboot aktiv)"
-    fi
-
-    # Desktop deaktivieren — Kasse übernimmt das Display exklusiv via KMSDRM
+# Desktop-Manager deaktivieren falls vorhanden
+if [[ "${IS_DESKTOP}" == "true" ]]; then
     systemctl disable lightdm 2>/dev/null || true
-    systemctl set-default multi-user.target
-    info "Desktop deaktiviert (multi-user.target, kein lightdm)"
+    systemctl set-default multi-user.target 2>/dev/null || true
+    info "Desktop-Modus deaktiviert (multi-user.target, kein Display-Manager)"
+fi
 
-    # Service-Override: KMSDRM-Umgebung
-    OVERRIDE_DIR="/etc/systemd/system/${SERVICE_NAME}@.service.d"
-    mkdir -p "${OVERRIDE_DIR}"
-    cat > "${OVERRIDE_DIR}/kmsdrm.conf" <<'KMSEOF'
+# Service-Override: SDL2 nutzt KMSDRM (kein X11/Wayland verfügbar)
+OVERRIDE_DIR="/etc/systemd/system/${SERVICE_NAME}@.service.d"
+mkdir -p "${OVERRIDE_DIR}"
+cat > "${OVERRIDE_DIR}/kmsdrm.conf" <<'KMSEOF'
 [Service]
 Environment=SDL_VIDEODRIVER=kmsdrm
 Environment=KIVY_NO_ENV_CONFIG=1
 KMSEOF
 
-    # Desktop-Autostart entfernen (Service übernimmt via KMSDRM)
-    rm -f "/home/${SERVICE_USER}/.config/autostart/clubfridge-kasse.desktop"
+# .display_rotation_confirmed anlegen (kein Whiptail-Dialog mehr nötig)
+touch "${INSTALL_DIR}/.display_rotation_confirmed"
+chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/.display_rotation_confirmed"
 
-    # Service aktivieren (wurde oben für Desktop deaktiviert)
-    systemctl enable "${SERVICE_NAME}@${SERVICE_USER}"
-    systemctl daemon-reload
-    info "Service aktiviert: ${SERVICE_NAME}@${SERVICE_USER} (KMSDRM)"
+# .env: existing-merge — bestehende DISPLAY_ROTATION/FULLSCREEN/INVERT_TOUCH
+# nicht blind überschreiben, sondern modellspezifisch setzen.
+touch "${ENV_FILE}"
 
-    # .display_rotation_confirmed anlegen (kein whiptail-Dialog)
-    touch "${INSTALL_DIR}/.display_rotation_confirmed"
-    chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/.display_rotation_confirmed"
-
-    # .env: DISPLAY_ROTATION=270 (Kivy dreht Content) + FULLSCREEN=true
-    touch "${ENV_FILE}"
-    if grep -q "^DISPLAY_ROTATION=" "${ENV_FILE}"; then
-        sed -i 's/^DISPLAY_ROTATION=.*/DISPLAY_ROTATION=270/' "${ENV_FILE}"
+set_env_var() {
+    local key="$1" value="$2"
+    if grep -q "^${key}=" "${ENV_FILE}"; then
+        sed -i "s|^${key}=.*|${key}=${value}|" "${ENV_FILE}"
     else
-        echo "DISPLAY_ROTATION=270" >> "${ENV_FILE}"
+        echo "${key}=${value}" >> "${ENV_FILE}"
     fi
-    if grep -q "^FULLSCREEN=" "${ENV_FILE}"; then
-        sed -i 's/^FULLSCREEN=.*/FULLSCREEN=true/' "${ENV_FILE}"
-    else
-        echo "FULLSCREEN=true" >> "${ENV_FILE}"
-    fi
-    chown "${SERVICE_USER}:${SERVICE_USER}" "${ENV_FILE}"
-    info ".env: DISPLAY_ROTATION=270, FULLSCREEN=true"
+}
 
-    # Console-Rotation in cmdline.txt (90° CW, passend zu dtoverlay rotation=270)
-    CMDLINE="/boot/firmware/cmdline.txt"
+# Konfig pro Pi-Modell + Display
+if [[ "${DISPLAY_TYPE}" == "td2" ]]; then
+    # TD2 (Pi 4 oder Pi 5): Hardware-Rotation via dtoverlay (Display + Touch zusammen)
+    if [[ -f "${BOOT_CONFIG}" ]] && ! grep -q "vc4-kms-dsi-ili9881-7inch" "${BOOT_CONFIG}"; then
+        sed -i 's/^display_auto_detect=1/display_auto_detect=0/' "${BOOT_CONFIG}"
+        printf "\n# Clubfridge: Touch Display 2\ndtoverlay=vc4-kms-dsi-ili9881-7inch,rotation=270\n" >> "${BOOT_CONFIG}"
+    fi
     if [[ -f "${CMDLINE}" ]] && ! grep -q 'fbcon=rotate' "${CMDLINE}"; then
         sed -i 's/$/ fbcon=rotate:1/' "${CMDLINE}"
     fi
-    info "Console-Rotation konfiguriert (fbcon=rotate:1)"
+    set_env_var "DISPLAY_ROTATION" "270"
+    set_env_var "FULLSCREEN" "true"
+    info "Display-Konfig: ${PI_MODEL} + TD2 — dtoverlay rotation=270, Kivy 270°"
 
-elif [[ "${IS_DESKTOP}" == "true" ]]; then
-    # ── Desktop + Landscape-Display (TD1, HDMI, etc.) ─────────────────
-    info "Desktop + Landscape-Display: Desktop-Autostart-Modus"
-    # Compositor handhabt Rotation, Kivy als Desktop-App
-    if ! grep -q "^DISPLAY_ROTATION=" "${ENV_FILE}" 2>/dev/null; then
-        echo "DISPLAY_ROTATION=0" >> "${ENV_FILE}"
+elif [[ "${DISPLAY_TYPE}" == "td1" && "${PI_MODEL}" == "pi3" ]]; then
+    # Pi 3 + TD1: nur fbcon=rotate:2 + Kivy software rotation=180
+    if [[ -f "${CMDLINE}" ]] && ! grep -q 'fbcon=rotate' "${CMDLINE}"; then
+        sed -i 's/$/ fbcon=rotate:2/' "${CMDLINE}"
     fi
-    if ! grep -q "^FULLSCREEN=" "${ENV_FILE}" 2>/dev/null; then
-        echo "FULLSCREEN=false" >> "${ENV_FILE}"
+    set_env_var "DISPLAY_ROTATION" "180"
+    set_env_var "FULLSCREEN" "true"
+    info "Display-Konfig: Pi 3 + TD1 — fbcon=rotate:2, Kivy 180°"
+
+elif [[ "${DISPLAY_TYPE}" == "td1" && "${PI_MODEL}" == "pi4" ]]; then
+    # Pi 4 + TD1: DRM rotiert, fbcon zusätzlich für Console
+    if [[ -f "${CMDLINE}" ]]; then
+        if ! grep -q 'video=DSI-1' "${CMDLINE}"; then
+            sed -i 's/$/ video=DSI-1:800x480@60,rotate=180/' "${CMDLINE}"
+        fi
+        if ! grep -q 'fbcon=rotate' "${CMDLINE}"; then
+            sed -i 's/$/ fbcon=rotate:2/' "${CMDLINE}"
+        fi
     fi
-    chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/deploy/start-desktop.sh"
-    info "Desktop-Autostart eingerichtet"
+    if [[ -f "${BOOT_CONFIG}" ]]; then
+        sed -i 's/auto_initramfs=1/auto_initramfs=0/' "${BOOT_CONFIG}"
+    fi
+    set_env_var "DISPLAY_ROTATION" "180"
+    set_env_var "FULLSCREEN" "true"
+    set_env_var "INVERT_TOUCH" "true"
+    info "Display-Konfig: Pi 4 + TD1 — video=DSI-1:rotate=180, fbcon=rotate:2, Kivy 180°, Touch invertiert"
+
 else
-    info "Headless-Umgebung erkannt (kein Desktop)"
-    info "Display-Rotation wird von Kivy verwaltet (Standard: 180° für Touch Display 1)"
-    # Rotations-Dialog beim ersten Start (whiptail)
-    if [[ -f "${INSTALL_DIR}/deploy/display-rotation-setup.sh" ]]; then
-        chmod +x "${INSTALL_DIR}/deploy/display-rotation-setup.sh"
-    fi
+    # HDMI oder anderes Display: keine Rotation, Kivy fullscreen
+    set_env_var "DISPLAY_ROTATION" "0"
+    set_env_var "FULLSCREEN" "true"
+    info "Display-Konfig: HDMI/Generic — keine Rotation"
+fi
+chown "${SERVICE_USER}:${SERVICE_USER}" "${ENV_FILE}"
 
-    # Auto-Login auf TTY1 einrichten (falls noch nicht vorhanden)
-    AUTOLOGIN_DIR="/etc/systemd/system/getty@tty1.service.d"
-    if [[ ! -f "${AUTOLOGIN_DIR}/autologin.conf" ]]; then
-        mkdir -p "${AUTOLOGIN_DIR}"
-        cat > "${AUTOLOGIN_DIR}/autologin.conf" <<ALEOF
+# Service aktivieren
+systemctl enable "${SERVICE_NAME}@${SERVICE_USER}" 2>/dev/null || true
+systemctl daemon-reload
+info "Service aktiviert: ${SERVICE_NAME}@${SERVICE_USER} (KMSDRM)"
+
+# Auto-Login auf TTY1 (für headless / nach Desktop-Disable)
+AUTOLOGIN_DIR="/etc/systemd/system/getty@tty1.service.d"
+if [[ ! -f "${AUTOLOGIN_DIR}/autologin.conf" ]]; then
+    mkdir -p "${AUTOLOGIN_DIR}"
+    cat > "${AUTOLOGIN_DIR}/autologin.conf" <<ALEOF
 [Service]
 ExecStart=
 ExecStart=-/sbin/agetty --autologin ${SERVICE_USER} --noclear %I \$TERM
 ALEOF
-        info "Auto-Login auf TTY1 eingerichtet"
-    fi
-
-    # .bash_profile: Rotations-Dialog + Console-Echo deaktivieren
-    BASH_PROFILE="/home/${SERVICE_USER}/.bash_profile"
-    cat > "${BASH_PROFILE}" <<'BPEOF'
-# Display-Rotation beim ersten Start (nur auf TTY1)
-if [ "$(tty)" = "/dev/tty1" ] && [ ! -f /opt/clubfridge/kasse/.display_rotation_confirmed ]; then
-    /opt/clubfridge/kasse/deploy/display-rotation-setup.sh
+    info "Auto-Login auf TTY1 eingerichtet"
 fi
+
+# Whiptail-Dialog ist obsolet — Rotation ist modellspezifisch fest gesetzt.
+# Veralteten wait-rotation.conf-Override entfernen falls vorhanden.
+rm -f "/etc/systemd/system/${SERVICE_NAME}@.service.d/wait-rotation.conf"
+systemctl daemon-reload 2>/dev/null || true
+
+# .bash_profile: Console-Echo aus + Shell blockieren, damit Kivy exklusiv läuft
+BASH_PROFILE="/home/${SERVICE_USER}/.bash_profile"
+cat > "${BASH_PROFILE}" <<'BPEOF'
 # Console-Echo deaktivieren und Shell blockieren damit Kivy exklusiv läuft
 if [ "$(tty)" = "/dev/tty1" ]; then
     stty -echo 2>/dev/null
     exec sleep infinity
 fi
 BPEOF
-    chown "${SERVICE_USER}:${SERVICE_USER}" "${BASH_PROFILE}"
-    info ".bash_profile mit Rotations-Dialog eingerichtet"
-
-    # Kasse-Service wartet auf Rotations-Bestätigung
-    OVERRIDE_DIR="/etc/systemd/system/${SERVICE_NAME}@.service.d"
-    mkdir -p "${OVERRIDE_DIR}"
-    cat > "${OVERRIDE_DIR}/wait-rotation.conf" <<'WREOF'
-[Service]
-ExecStartPre=/bin/bash -c 'while [ ! -f /opt/clubfridge/kasse/.display_rotation_confirmed ]; do sleep 1; done'
-WREOF
-    systemctl daemon-reload
-    info "Service wartet auf Display-Rotations-Bestätigung"
-fi
+chown "${SERVICE_USER}:${SERVICE_USER}" "${BASH_PROFILE}"
+info ".bash_profile eingerichtet (Console-Sperre auf TTY1)"
 
 # ── WiFi: Radio aktivieren + Regulatory Domain DE ────────────────────────
 
