@@ -258,16 +258,18 @@ def write_env(
     env_path = get_env_file()
     env_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Bestehende Display-Einstellungen beibehalten (vom Install-Script gesetzt)
+    # Bestehende Display-/Touch-Einstellungen beibehalten (vom Install-Script
+    # bzw. vom Golden Image gesetzt — die kennen die Hardware-Konfiguration).
     _existing_display = {}
     if env_path.exists():
         for line in env_path.read_text(encoding="utf-8").splitlines():
-            for key in ("DISPLAY_ROTATION", "FULLSCREEN"):
+            for key in ("DISPLAY_ROTATION", "FULLSCREEN", "INVERT_TOUCH"):
                 if line.startswith(f"{key}="):
                     _existing_display[key] = line.split("=", 1)[1]
 
     _fullscreen = _existing_display.get("FULLSCREEN", "true")
     _display_rotation = _existing_display.get("DISPLAY_ROTATION")
+    _invert_touch = _existing_display.get("INVERT_TOUCH")
 
     content = (
         "# Automatisch generiert – Clubfridge Kassen-Einrichtung\n"
@@ -289,6 +291,8 @@ def write_env(
     )
     if _display_rotation is not None:
         content += f"DISPLAY_ROTATION={_display_rotation}\n"
+    if _invert_touch is not None:
+        content += f"INVERT_TOUCH={_invert_touch}\n"
 
     env_path.write_text(content, encoding="utf-8")
     log.info("Konfiguration geschrieben: %s", env_path)

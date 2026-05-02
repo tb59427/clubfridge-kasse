@@ -134,9 +134,14 @@ if [ -f "${CMDLINE}" ]; then
 
     if [ "${VARIANT}" = "pi3" ]; then
         # Display 180° drehen (TD1 ist im Standard-Gehäuse kopfüber montiert).
-        # Wirkt auf DRM-Ebene → Boot, Console und Kasse alle korrekt orientiert.
+        # Empirisch: video=DSI-1:WxH@F,rotate=180 dreht Boot-Logo + Kasse-Plane,
+        # fbcon=rotate:2 dreht zusätzlich die Linux-Text-Console. Beide nötig für
+        # einheitlich richtig orientierten Bildschirm.
         if ! grep -q 'video=DSI-1' "${CMDLINE}"; then
             sed -i 's/$/ video=DSI-1:800x480@60,rotate=180/' "${CMDLINE}"
+        fi
+        if ! grep -q 'fbcon=rotate' "${CMDLINE}"; then
+            sed -i 's/$/ fbcon=rotate:2/' "${CMDLINE}"
         fi
         # auto_initramfs=0 damit die Firmware die cmdline.txt direkt respektiert
         if [ -f "${BOOT_CONFIG}" ]; then
@@ -182,9 +187,14 @@ touch "${ROOTFS_DIR}${INSTALL_DIR}/.display_rotation_confirmed"
 chown 1000:1000 "${ROOTFS_DIR}${INSTALL_DIR}/.display_rotation_confirmed"
 
 if [ "${VARIANT}" = "pi3" ]; then
-    # Pi3/Pi4 + TD1: Display dreht DRM, Touch über Kivy MTD invert_x/y
+    # Pi3/Pi4 + TD1:
+    # - DRM rotiert die DSI-Plane (Boot-Logo + Kasse) per video=…,rotate=180
+    # - SDL2/Kivy bekommt das auf manchen Pi-Bookworm-Setups jedoch nicht mit;
+    #   deshalb zusätzlich Kivy software rotation=180 (doppelt-rotiert greift
+    #   in der Praxis korrekt — Symptom des Render-Pfads bei vc4-kms-v3d).
+    # - INVERT_TOUCH dreht die MTD-Koordinaten 180° (DRM rotiert Touch nicht mit)
     cat > "${ROOTFS_DIR}${INSTALL_DIR}/.env" << 'ENVEOF'
-DISPLAY_ROTATION=0
+DISPLAY_ROTATION=180
 FULLSCREEN=true
 INVERT_TOUCH=true
 ENVEOF
