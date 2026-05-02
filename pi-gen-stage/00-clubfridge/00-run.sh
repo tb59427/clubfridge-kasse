@@ -91,12 +91,15 @@ CHEOF
 # KEINE Software-Rotation (kein Kivy-Rotation, kein xrandr, kein wlr-randr).
 # Alles über config.txt + cmdline.txt auf Hardware-Ebene.
 #
-# Touch Display 1 (800x480, FT5406):
+# Touch Display 1 (800x480, FT5406) — Pi 3 / Pi 4:
 #   - display_auto_detect=1 (default, erkennt TD1 automatisch)
-#   - Console-Rotation: fbcon=rotate:2 in cmdline.txt
-#   - Touch-Rotation: Kivy rotation=180 (KEIN invx,invy Overlay!)
+#   - Display-Rotation 180°: video=DSI-1:800x480@60,rotate=180 in cmdline.txt
+#     (Standard-Pi-Gehäuse hat TD1 kopfüber montiert. Wirkt auf DRM-Ebene
+#      → Boot-Logo, Console und Kasse sind korrekt orientiert. Mit
+#      vc4-kms-v3d wäre fbcon=rotate:N ohne Effekt.)
+#   - Touch-Rotation: Kivy MTD invert_x/y (DRM rotiert nur Display, nicht Touch)
 #
-# Touch Display 2 (720x1280, Goodix):
+# Touch Display 2 (720x1280, Goodix) — Pi 5:
 #   - Display+Touch: dtoverlay=vc4-kms-dsi-ili9881-7inch,rotation=270
 #   - Touch dreht automatisch mit
 #   - display_auto_detect=0
@@ -109,9 +112,7 @@ if [ -f "${BOOT_CONFIG}" ]; then
     sed -i 's/^#dtparam=i2c_arm=on/dtparam=i2c_arm=on/' "${BOOT_CONFIG}"
 
     if [ "${VARIANT}" = "pi3" ]; then
-        # ── Touch Display 1: display_auto_detect erkennt TD1 automatisch.
-        # Touch-Rotation macht Kivy (rotation=180), NICHT das Kernel-Overlay
-        # (invx,invy würde Touch doppelt invertieren).
+        # display_auto_detect=1 reicht — TD1 wird automatisch erkannt
         :
     else
         # display_auto_detect deaktivieren (TD2 braucht manuelles Overlay)
@@ -123,7 +124,7 @@ if [ -f "${BOOT_CONFIG}" ]; then
     fi
 fi
 
-# ── cmdline.txt: Console-Rotation + WiFi Regulatory Domain ────────────────────
+# ── cmdline.txt: Display-Rotation + Console-Rotation + WiFi Regulatory Domain
 
 if [ -f "${CMDLINE}" ]; then
     # WiFi Regulatory Domain DE (Kernel-Parameter)
@@ -132,11 +133,12 @@ if [ -f "${CMDLINE}" ]; then
     fi
 
     if [ "${VARIANT}" = "pi3" ]; then
-        # Console-Rotation 180° (Touch Display 1 im Gehäuse kopfüber)
-        if ! grep -q 'fbcon=rotate' "${CMDLINE}"; then
-            sed -i 's/$/ fbcon=rotate:2/' "${CMDLINE}"
+        # Display 180° drehen (TD1 ist im Standard-Gehäuse kopfüber montiert).
+        # Wirkt auf DRM-Ebene → Boot, Console und Kasse alle korrekt orientiert.
+        if ! grep -q 'video=DSI-1' "${CMDLINE}"; then
+            sed -i 's/$/ video=DSI-1:800x480@60,rotate=180/' "${CMDLINE}"
         fi
-        # auto_initramfs=0 damit Firmware die cmdline.txt respektiert
+        # auto_initramfs=0 damit die Firmware die cmdline.txt direkt respektiert
         if [ -f "${BOOT_CONFIG}" ]; then
             sed -i 's/auto_initramfs=1/auto_initramfs=0/' "${BOOT_CONFIG}"
         fi
@@ -162,49 +164,35 @@ ExecStart=
 ExecStart=-/sbin/agetty --autologin ${SERVICE_USER} --noclear %I \$TERM
 EOF
 
-# ── Display-Rotation Dialog (whiptail, beim ersten Start) ─────────────────
+# ── Bash-Profile: Console blockieren, damit Kivy exklusiv läuft ─────────────
 
-chmod +x "${ROOTFS_DIR}${INSTALL_DIR}/deploy/display-rotation-setup.sh"
+cat > "${ROOTFS_DIR}/home/${SERVICE_USER}/.bash_profile" << 'BPEOF'
+# Console-Echo deaktivieren und Shell blockieren damit Kivy exklusiv läuft
+if [ "$(tty)" = "/dev/tty1" ]; then
+    stty -echo 2>/dev/null
+    exec sleep infinity
+fi
+BPEOF
+chown 1000:1000 "${ROOTFS_DIR}/home/${SERVICE_USER}/.bash_profile"
+
+# ── .env + .display_rotation_confirmed vorkonfigurieren ─────────────────────
+# Rotation läuft jetzt auf Hardware-/DRM-Ebene (siehe oben), kein Dialog nötig.
+
+touch "${ROOTFS_DIR}${INSTALL_DIR}/.display_rotation_confirmed"
+chown 1000:1000 "${ROOTFS_DIR}${INSTALL_DIR}/.display_rotation_confirmed"
 
 if [ "${VARIANT}" = "pi3" ]; then
-    # Pi3/TD1: Rotation-Dialog beim ersten Start (User wählt 0° oder 180°)
-    # .bash_profile: Rotation-Dialog vor allem anderen (nur auf TTY1, nur beim ersten Start)
-    cat > "${ROOTFS_DIR}/home/${SERVICE_USER}/.bash_profile" << 'BPEOF'
-# Display-Rotation beim ersten Start (nur auf TTY1)
-if [ "$(tty)" = "/dev/tty1" ] && [ ! -f /opt/clubfridge/kasse/.display_rotation_confirmed ]; then
-    /opt/clubfridge/kasse/deploy/display-rotation-setup.sh
-fi
-# Console-Echo deaktivieren und Shell blockieren damit Kivy exklusiv läuft
-if [ "$(tty)" = "/dev/tty1" ]; then
-    stty -echo 2>/dev/null
-    exec sleep infinity
-fi
-BPEOF
-
-    # Kasse-Service wartet bis Rotation bestätigt ist
-    mkdir -p "${ROOTFS_DIR}/etc/systemd/system/clubfridge-kasse@.service.d"
-    cat > "${ROOTFS_DIR}/etc/systemd/system/clubfridge-kasse@.service.d/wait-rotation.conf" << 'WAITEOF'
-[Service]
-ExecStartPre=/bin/bash -c 'while [ ! -f /opt/clubfridge/kasse/.display_rotation_confirmed ]; do sleep 1; done'
-WAITEOF
+    # Pi3/Pi4 + TD1: Display dreht DRM, Touch über Kivy MTD invert_x/y
+    cat > "${ROOTFS_DIR}${INSTALL_DIR}/.env" << 'ENVEOF'
+DISPLAY_ROTATION=0
+FULLSCREEN=true
+INVERT_TOUCH=true
+ENVEOF
 else
-    # Pi5/TD2: Hardware-Rotation via dtoverlay, kein Dialog nötig
-    cat > "${ROOTFS_DIR}/home/${SERVICE_USER}/.bash_profile" << 'BPEOF'
-# Console-Echo deaktivieren und Shell blockieren damit Kivy exklusiv läuft
-if [ "$(tty)" = "/dev/tty1" ]; then
-    stty -echo 2>/dev/null
-    exec sleep infinity
-fi
-BPEOF
-
-    # .display_rotation_confirmed anlegen (kein Whiptail nötig)
-    touch "${ROOTFS_DIR}${INSTALL_DIR}/.display_rotation_confirmed"
-
-    # Display-Einstellungen vorkonfigurieren (KMSDRM: Kivy dreht Content)
+    # Pi5 + TD2: dtoverlay rotiert Display+Touch zusammen
     cat > "${ROOTFS_DIR}${INSTALL_DIR}/.env" << 'ENVEOF'
 DISPLAY_ROTATION=270
 FULLSCREEN=true
 ENVEOF
-    chown 1000:1000 "${ROOTFS_DIR}${INSTALL_DIR}/.env"
 fi
-chown 1000:1000 "${ROOTFS_DIR}/home/${SERVICE_USER}/.bash_profile"
+chown 1000:1000 "${ROOTFS_DIR}${INSTALL_DIR}/.env"
