@@ -5,10 +5,49 @@ Startet die Kivy-App für die Digitale Kasse auf dem Raspberry Pi.
 Kivy muss vor dem Import der App-Klasse konfiguriert werden.
 """
 import os
+import subprocess
 import sys
 
 # Kivy-Konfiguration muss VOR dem ersten Kivy-Import gesetzt werden
 os.environ.setdefault("KIVY_NO_ENV_CONFIG", "1")
+
+
+def _check_kmsdrm_blockers() -> None:
+    """Warnt laut wenn KMSDRM gewünscht ist, aber ein Compositor das Display hält.
+
+    Im Service-Mode setzt der install.sh-Drop-in `SDL_VIDEODRIVER=kmsdrm`. Ist
+    dann gleichzeitig labwc/wayfire/Xorg/lightdm aktiv, hält dieser DRM-Master
+    auf /dev/dri/cardN — KMSDRM-Init scheitert, SDL2 fällt stillschweigend auf
+    Xwayland zurück (falls DISPLAY gesetzt ist) und die Display-Rotation wird
+    gegenüber dem Compositor verdoppelt. Sehr verwirrendes Symptom — daher
+    einmal beim Start klar im Journal anschreien.
+    """
+    if sys.platform != "linux":
+        return
+    if os.environ.get("SDL_VIDEODRIVER") != "kmsdrm":
+        return
+    blockers = []
+    for name in ("labwc", "wayfire", "Xorg", "Xwayland", "lightdm", "gdm", "sddm"):
+        try:
+            r = subprocess.run(
+                ["pgrep", "-x", name], capture_output=True, timeout=2
+            )
+            if r.returncode == 0:
+                blockers.append(name)
+        except Exception:
+            pass
+    if blockers:
+        sys.stderr.write(
+            "FEHLER: KMSDRM ist angefordert (SDL_VIDEODRIVER=kmsdrm), aber "
+            f"folgender Prozess hält das Display: {', '.join(blockers)}.\n"
+            "Die Kasse fällt damit auf X11/Xwayland zurück — Display-Rotation "
+            "und Fullscreen sind nicht zuverlässig.\n"
+            "Reparatur: sudo systemctl mask lightdm display-manager "
+            "&& sudo systemctl set-default multi-user.target && sudo reboot\n"
+        )
+
+
+_check_kmsdrm_blockers()
 
 from app.config import settings  # noqa: E402
 from kivy.config import Config  # noqa: E402

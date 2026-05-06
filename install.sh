@@ -76,7 +76,14 @@ echo "── Install gestartet: $(date -Iseconds) ──"
 # ── Desktop-Erkennung (früh, wird überall im Script gebraucht) ──────────────
 
 IS_DESKTOP=false
-if command -v labwc >/dev/null 2>&1 || command -v openbox >/dev/null 2>&1 || systemctl is-active --quiet lightdm 2>/dev/null; then
+# Pakete-Check fängt auch Trixie-Desktop ab, wo lightdm noch nicht aktiv ist
+# während install.sh läuft, oder wo labwc/Xorg auf $PATH fehlt.
+if dpkg -l 2>/dev/null | awk '$1 == "ii" {print $2}' \
+        | grep -qE '^(lightdm|labwc|wayfire|openbox|xserver-xorg-core)$'; then
+    IS_DESKTOP=true
+elif command -v labwc >/dev/null 2>&1 \
+        || command -v openbox >/dev/null 2>&1 \
+        || systemctl is-active --quiet lightdm 2>/dev/null; then
     IS_DESKTOP=true
 fi
 
@@ -242,8 +249,9 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=%i
-Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/%i/.Xauthority
+# Kein DISPLAY/XAUTHORITY: Service-Mode rendert direkt über KMSDRM (siehe
+# Drop-in kmsdrm.conf). Mit DISPLAY=:0 würde SDL2 bei blockiertem KMSDRM
+# auf Xwayland zurückfallen und die Rotation verdoppeln.
 Environment=KIVY_NO_ENV_CONFIG=1
 WorkingDirectory=${INSTALL_DIR}
 ExecStart=${VENV}/bin/python main.py
@@ -378,11 +386,32 @@ step "Display-Umgebung wird konfiguriert…"
 BOOT_CONFIG="/boot/firmware/config.txt"
 CMDLINE="/boot/firmware/cmdline.txt"
 
-# Desktop-Manager deaktivieren falls vorhanden
+# Desktop-Manager und User-Compositor wirklich abschalten:
+# - mask überlebt apt-upgrade und manuelles enable
+# - stop beendet die laufende Session sofort (sonst hält labwc DRM-Master
+#   bis zum nächsten Reboot, KMSDRM-Init scheitert dann)
+# - User-Autostart-Dateien (labwc/wayfire/lxsession) werden umbenannt
+#   damit der nächste Login keinen Compositor wieder hochzieht.
 if [[ "${IS_DESKTOP}" == "true" ]]; then
-    systemctl disable lightdm 2>/dev/null || true
+    systemctl mask lightdm.service 2>/dev/null || true
+    systemctl mask display-manager.service 2>/dev/null || true
     systemctl set-default multi-user.target 2>/dev/null || true
-    info "Desktop-Modus deaktiviert (multi-user.target, kein Display-Manager)"
+    systemctl stop lightdm.service 2>/dev/null || true
+
+    USER_HOME="/home/${SERVICE_USER}"
+    DISABLED_TS="$(date +%Y%m%d-%H%M%S)"
+    for f in \
+        "${USER_HOME}/.config/wayfire.ini" \
+        "${USER_HOME}/.config/labwc/autostart" \
+        "${USER_HOME}/.config/lxsession/LXDE-pi/autostart" \
+        "${USER_HOME}/.xinitrc" \
+        "${USER_HOME}/.xsession" ; do
+        if [[ -f "${f}" ]]; then
+            mv "${f}" "${f}.disabled-by-clubfridge.${DISABLED_TS}" 2>/dev/null || true
+        fi
+    done
+
+    info "Desktop-Modus abgeschaltet: lightdm gemaskt, default-target=multi-user, User-Autostart neutralisiert"
 fi
 
 # Service-Override: SDL2 nutzt KMSDRM (kein X11/Wayland verfügbar)
@@ -525,6 +554,42 @@ else
     info "WiFi-Enable Service bereits vorhanden"
 fi
 
+# ── Service-Mode Verifikation ────────────────────────────────────────────────
+
+step "Service-Mode wird verifiziert…"
+
+BLOCKERS=()
+for proc in labwc wayfire Xorg Xwayland lightdm gdm sddm; do
+    if pgrep -x "${proc}" >/dev/null 2>&1; then
+        BLOCKERS+=("${proc}")
+    fi
+done
+
+# DRM-Master-Check: hält ein Nicht-systemd-Prozess /dev/dri/card1?
+DRM_HOLDERS=""
+for card in /dev/dri/card0 /dev/dri/card1 /dev/dri/card2; do
+    [[ -e "${card}" ]] || continue
+    holders="$(lsof "${card}" 2>/dev/null | awk 'NR>1 && $1 != "systemd" && $1 != "systemd-l" {print $1}' | sort -u | tr '\n' ',' | sed 's/,$//')"
+    if [[ -n "${holders}" ]]; then
+        DRM_HOLDERS="${DRM_HOLDERS}${card}=${holders} "
+    fi
+done
+
+if (( ${#BLOCKERS[@]} > 0 )) || [[ -n "${DRM_HOLDERS}" ]]; then
+    warn "Service-Mode noch nicht aktiv:"
+    if (( ${#BLOCKERS[@]} > 0 )); then
+        warn "  Compositor/Display-Manager läuft noch: ${BLOCKERS[*]}"
+    fi
+    if [[ -n "${DRM_HOLDERS}" ]]; then
+        warn "  /dev/dri ist belegt: ${DRM_HOLDERS}"
+    fi
+    warn "  → Bitte 'sudo reboot' ausführen, damit die Kasse das Display exklusiv bekommt."
+    REBOOT_REQUIRED=true
+else
+    info "Service-Mode aktiv: keine Compositor-Prozesse, /dev/dri/cardN frei für Kasse."
+    REBOOT_REQUIRED=false
+fi
+
 # ── Abschluss ─────────────────────────────────────────────────────────────────
 
 echo ""
@@ -534,11 +599,12 @@ echo "  Nächste Schritte:"
 echo ""
 echo "  1. RFID-Leser und Barcode-Scanner per USB anschließen (falls noch nicht geschehen)"
 echo ""
-if [[ "${IS_DESKTOP}" == "true" ]]; then
-echo "  2. System neu starten (oder ab-/anmelden):"
+if [[ "${REBOOT_REQUIRED}" == "true" ]]; then
+echo "  2. System neu starten — der Compositor/Display-Manager läuft noch und"
+echo "     blockiert KMSDRM. Erst nach Reboot bekommt die Kasse das Display:"
 echo "     sudo reboot"
 echo ""
-echo "  3. Die Kasse startet automatisch nach dem Login."
+echo "  3. Nach dem Reboot startet die Kasse automatisch."
 echo "     Der Einrichtungs-Assistent erscheint auf dem Bildschirm."
 echo "     Gib Server-URL, Tenant-ID und Setup-Code aus dem Admin-UI ein."
 else
