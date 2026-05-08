@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     has_relay: bool = False
     relay_gpio_pin: int = 17
     relay_open_duration_ms: int = 3000
+    # True = Strom an = Schloss zu, Strom aus = Schloss offen.
+    # False (Default) = Strom an = Schloss offen, Strom aus = Schloss zu.
+    relay_invert: bool = False
 
     # Lokale SQLite-Datenbank
     local_db_path: str = "kasse_local.db"

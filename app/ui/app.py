@@ -139,12 +139,14 @@ class KasseApp(App):
                 host=cached.get("lock_host"),
                 gpio_pin=cached.get("lock_gpio_pin"),
                 open_duration_ms=cached.get("lock_open_duration_ms", 3000),
+                invert=bool(cached.get("lock_invert", False)),
             )
         elif settings.has_relay:
             self.lock = create_lock(
                 "gpio",
                 gpio_pin=settings.relay_gpio_pin,
                 open_duration_ms=settings.relay_open_duration_ms,
+                invert=settings.relay_invert,
             )
         else:
             self.lock = create_lock(None)

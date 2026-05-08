@@ -209,6 +209,7 @@ class SyncManager:
                     "lock_host": lock_config.get("lock_host"),
                     "lock_gpio_pin": lock_config.get("lock_gpio_pin"),
                     "lock_open_duration_ms": lock_config.get("lock_open_duration_ms", 3000),
+                    "lock_invert": bool(lock_config.get("lock_invert", False)),
                 }
             else:
                 new_sig = None
@@ -226,6 +227,7 @@ class SyncManager:
                     host=lock_config.get("lock_host"),
                     gpio_pin=lock_config.get("lock_gpio_pin"),
                     open_duration_ms=lock_config.get("lock_open_duration_ms", 3000),
+                    invert=bool(lock_config.get("lock_invert", False)),
                 )
             else:
                 app.lock = create_lock(lock_type=None)
