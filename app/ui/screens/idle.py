@@ -10,7 +10,11 @@ Entwicklungsmodus:
   F → Cache-Aktualisierung anstoßen
 """
 import logging
+import socket
 import threading
+from datetime import datetime
+
+from app.config import settings
 
 try:
     from importlib.metadata import version as _pkg_version
@@ -223,8 +227,7 @@ class IdleScreen(Screen):
 
         if member is None:
             log.warning("Unbekannte RFID-Karte: %s", token)
-            self.error_text = "Unbekannte Karte – bitte beim Admin melden"
-            Clock.schedule_once(lambda _dt: self._clear_error(), 3)
+            self._show_unknown_card_popup(token)
             return
 
         log.info("Mitglied erkannt: %s (%s)", member.name, member.id)
@@ -256,6 +259,92 @@ class IdleScreen(Screen):
 
     def _clear_error(self) -> None:
         self.error_text = ""
+
+    # ------------------------------------------------------------------
+    # Unbekannte-Karte-Popup
+    # ------------------------------------------------------------------
+
+    def _show_unknown_card_popup(self, token: str) -> None:
+        """Zeigt einen großen Bildschirm mit RFID-UID + Anweisung,
+        Foto an info@clubfridge.com zu schicken. Quick-and-dirty Bug-
+        Report-Pfad für Endanwender ohne IT-Kenntnis: Foto vom Display
+        liefert UID + Kontext (Verein, Kasse, Zeitpunkt) ans Support-
+        Postfach.
+        """
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.button import Button
+        from kivy.uix.label import Label
+        from kivy.uix.popup import Popup
+
+        when = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+        try:
+            host = socket.gethostname()
+        except Exception:
+            host = "?"
+        tenant = settings.tenant_slug or "?"
+
+        layout = BoxLayout(orientation="vertical", padding=24, spacing=14)
+
+        layout.add_widget(Label(
+            text="[b]Karte nicht erkannt[/b]",
+            markup=True,
+            font_size=28,
+            color=(1.0, 0.42, 0.208, 1),
+            size_hint_y=None,
+            height=44,
+        ))
+        layout.add_widget(Label(
+            text=f"[size=42][b]{token}[/b][/size]",
+            markup=True,
+            color=(1, 1, 1, 1),
+            size_hint_y=None,
+            height=72,
+        ))
+        layout.add_widget(Label(
+            text=(
+                f"Verein: [b]{tenant}[/b]   ·   Kasse: [b]{host}[/b]\n"
+                f"Zeitpunkt: [b]{when}[/b]"
+            ),
+            markup=True,
+            font_size=16,
+            color=(0.85, 0.85, 0.85, 1),
+            halign="center",
+            size_hint_y=None,
+            height=56,
+        ))
+        layout.add_widget(Label(
+            text=(
+                "Bitte [b]fotografiere diesen Bildschirm[/b] und schicke "
+                "das Bild an [b]info@clubfridge.com[/b].\n"
+                "Wir ordnen die Karte deinem Mitgliedskonto zu."
+            ),
+            markup=True,
+            font_size=18,
+            color=(1, 1, 1, 0.9),
+            halign="center",
+            valign="middle",
+            text_size=(620, None),
+        ))
+        btn = Button(
+            text="Schließen",
+            size_hint_y=None,
+            height=56,
+            font_size=18,
+        )
+        layout.add_widget(btn)
+
+        popup = Popup(
+            title="",
+            separator_height=0,
+            content=layout,
+            size_hint=(None, None),
+            size=(700, 420),
+            auto_dismiss=False,
+        )
+        btn.bind(on_release=popup.dismiss)
+        # Auto-Schließen nach 60 s, falls niemand drückt
+        Clock.schedule_once(lambda _dt: popup.dismiss(), 60)
+        popup.open()
 
     # ------------------------------------------------------------------
     # Tastatur-Shortcuts fuer Entwicklungsmodus
