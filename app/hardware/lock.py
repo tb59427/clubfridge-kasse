@@ -33,6 +33,17 @@ class Lock(abc.ABC):
     def _deactivate(self) -> None:
         """Schloss schließen (verriegeln / Relais abfallen)."""
 
+    def signature(self) -> dict | None:
+        """Aktuelle Lock-Konfiguration im Server-Config-Format.
+
+        Wird vom Sync-Manager genutzt um zu erkennen ob ein Hot-Swap nötig
+        ist: stimmt die neue Server-Config mit der aktuell laufenden
+        Instanz überein, kann der Swap übersprungen werden — was bei
+        GpioLock einen GPIO-Race vermeidet (RPi.GPIO ist nicht thread-safe;
+        Hot-Swap mitten in einer laufenden Pulse-Session kann segfaulten).
+        """
+        return None
+
     def open(self) -> None:
         """Schloss für die konfigurierte Dauer öffnen (non-blocking)."""
         log.info("Lock.open() aufgerufen (%s, %.1fs)", type(self).__name__, self._duration)
@@ -110,14 +121,31 @@ class GpioLock(Lock):
             self._GPIO.output(self._pin, self._GPIO.LOW)
             log.info("GpioLock: Pin %d bleibt LOW (kein cleanup)", self._pin)
 
+    def signature(self) -> dict:
+        return {
+            "lock_type": "gpio",
+            "lock_host": None,
+            "lock_gpio_pin": self._pin,
+            "lock_open_duration_ms": int(round(self._duration * 1000)),
+        }
+
 
 class ShellyLock(Lock):
     """Shelly 1 Gen 4 WiFi-Schalter via HTTP RPC-API."""
 
     def __init__(self, host: str, open_duration_ms: int) -> None:
         super().__init__(open_duration_ms)
+        self._host = host
         self._url = f"http://{host}/rpc/Switch.Set"
         log.info("ShellyLock initialisiert: %s", self._url)
+
+    def signature(self) -> dict:
+        return {
+            "lock_type": "shelly",
+            "lock_host": self._host,
+            "lock_gpio_pin": None,
+            "lock_open_duration_ms": int(round(self._duration * 1000)),
+        }
 
     def _activate(self) -> None:
         try:
@@ -141,8 +169,17 @@ class TasmotaLock(Lock):
 
     def __init__(self, host: str, open_duration_ms: int) -> None:
         super().__init__(open_duration_ms)
+        self._host = host
         self._base = f"http://{host}/cm"
         log.info("TasmotaLock initialisiert: %s", self._base)
+
+    def signature(self) -> dict:
+        return {
+            "lock_type": "tasmota",
+            "lock_host": self._host,
+            "lock_gpio_pin": None,
+            "lock_open_duration_ms": int(round(self._duration * 1000)),
+        }
 
     def _activate(self) -> None:
         try:

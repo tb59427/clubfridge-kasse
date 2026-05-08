@@ -190,19 +190,49 @@ class SyncManager:
 
         def _swap(_dt):
             app = App.get_running_app()
-            if app and hasattr(app, "lock"):
-                old = app.lock
-                old.cleanup()
-                if lock_config:
-                    app.lock = create_lock(
-                        lock_type=lock_config["lock_type"],
-                        host=lock_config.get("lock_host"),
-                        gpio_pin=lock_config.get("lock_gpio_pin"),
-                        open_duration_ms=lock_config.get("lock_open_duration_ms", 3000),
-                    )
-                else:
-                    app.lock = create_lock(lock_type=None)
-                log.info("Lock-Treiber gewechselt: %s", type(app.lock).__name__)
+            if not app or not hasattr(app, "lock"):
+                return
+            old = app.lock
+
+            # Wichtig: Wenn die Server-Config äquivalent zur aktuell laufenden
+            # Lock-Instanz ist, NICHT swappen. Sonst würde cleanup() den Pin
+            # mitten in einer aktiven Pulse-Session auf LOW ziehen (Anwender
+            # sieht ein Klicken mitten beim Einkauf), und es entsteht ein
+            # Race auf der globalen RPi.GPIO-State zwischen dem alten Pulse-
+            # Thread und der neu erzeugten Instanz — nicht thread-safe,
+            # potenziell Segfault → systemd-Restart der Kasse.
+            old_sig = old.signature() if hasattr(old, "signature") else None
+            new_sig: dict | None
+            if lock_config:
+                new_sig = {
+                    "lock_type": lock_config.get("lock_type"),
+                    "lock_host": lock_config.get("lock_host"),
+                    "lock_gpio_pin": lock_config.get("lock_gpio_pin"),
+                    "lock_open_duration_ms": lock_config.get("lock_open_duration_ms", 3000),
+                }
+            else:
+                new_sig = None
+            if old_sig == new_sig:
+                log.debug(
+                    "Hot-Swap übersprungen — Lock-Config unverändert (%s)",
+                    type(old).__name__,
+                )
+                return
+
+            old.cleanup()
+            if lock_config:
+                app.lock = create_lock(
+                    lock_type=lock_config["lock_type"],
+                    host=lock_config.get("lock_host"),
+                    gpio_pin=lock_config.get("lock_gpio_pin"),
+                    open_duration_ms=lock_config.get("lock_open_duration_ms", 3000),
+                )
+            else:
+                app.lock = create_lock(lock_type=None)
+            log.info(
+                "Lock-Treiber gewechselt: %s → %s",
+                type(old).__name__, type(app.lock).__name__,
+            )
 
         Clock.schedule_once(_swap, 0)
 
