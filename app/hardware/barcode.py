@@ -8,6 +8,7 @@ Im Unterschied zum RFID-Leser sind hier auch Sonderzeichen relevant
 """
 import logging
 import threading
+import time
 from collections.abc import Callable
 
 log = logging.getLogger(__name__)
@@ -65,44 +66,73 @@ class BarcodeScanner:
         self._running = False
 
     def _read_loop(self) -> None:
-        try:
-            device = InputDevice(self._device_path)
-            device.grab()
-        except Exception as e:
-            log.error("Barcode: Gerät %s konnte nicht geöffnet werden: %s", self._device_path, e)
-            return
+        """Liest endlos vom evdev-Gerät, mit automatischer Wiederverbindung.
 
-        log.info("Barcode: Lese von %s", device.name)
-        try:
-            for event in device.read_loop():
-                if not self._running:
-                    break
-                if event.type != ecodes.EV_KEY:
-                    continue
-                key_event = categorize(event)
-                if key_event.keystate != 1:
-                    continue
-
-                scancode = key_event.scancode
-                key_name = ecodes.KEY.get(scancode, "")
-                if isinstance(key_name, list):
-                    key_name = key_name[0] if key_name else ""
-
-                log.debug("Barcode key: %s (state=%s)", key_name, key_event.keystate)
-                if key_name in ("KEY_ENTER", "KEY_KPENTER"):
-                    barcode = self._buffer.strip()
-                    self._buffer = ""
-                    if barcode:
-                        self._fire(barcode)
-                else:
-                    self._buffer += _KEY_MAP.get(key_name, "")
-        except Exception as e:
-            log.error("Barcode: Lesefehler: %s", e)
-        finally:
+        Siehe `rfid.py._read_loop` — gleiches Pattern: USB-Hickup darf den
+        Scanner nicht stillegen, also Reconnect mit exponentiellem Backoff.
+        """
+        backoff = 1.0
+        while self._running:
+            device = None
             try:
-                device.ungrab()
-            except Exception:
-                pass
+                device = InputDevice(self._device_path)
+                device.grab()
+                log.info("Barcode: Lese von %s", device.name)
+                backoff = 1.0
+                for event in device.read_loop():
+                    if not self._running:
+                        break
+                    if event.type != ecodes.EV_KEY:
+                        continue
+                    key_event = categorize(event)
+                    if key_event.keystate != 1:
+                        continue
+
+                    scancode = key_event.scancode
+                    key_name = ecodes.KEY.get(scancode, "")
+                    if isinstance(key_name, list):
+                        key_name = key_name[0] if key_name else ""
+
+                    log.debug("Barcode key: %s (state=%s)", key_name, key_event.keystate)
+                    if key_name in ("KEY_ENTER", "KEY_KPENTER"):
+                        barcode = self._buffer.strip()
+                        self._buffer = ""
+                        if barcode:
+                            self._fire(barcode)
+                    else:
+                        self._buffer += _KEY_MAP.get(key_name, "")
+            except FileNotFoundError:
+                log.warning(
+                    "Barcode-Gerät nicht vorhanden: %s — warte %.0fs",
+                    self._device_path, backoff,
+                )
+            except OSError as e:
+                log.warning(
+                    "Barcode-USB-Hickup auf %s: %s — versuche Wiederverbindung in %.0fs",
+                    self._device_path, e, backoff,
+                )
+            except Exception as e:  # noqa: BLE001
+                log.error(
+                    "Barcode-Lesefehler: %s — versuche Wiederverbindung in %.0fs",
+                    e, backoff,
+                )
+            finally:
+                if device is not None:
+                    try:
+                        device.ungrab()
+                    except Exception:
+                        pass
+                    try:
+                        device.close()
+                    except Exception:
+                        pass
+                self._buffer = ""
+
+            if not self._running:
+                break
+            time.sleep(backoff)
+            backoff = min(backoff * 2.0, 30.0)
+        log.info("Barcode-Read-Loop beendet (%s)", self._device_path)
 
     def _fire(self, barcode: str) -> None:
         try:
