@@ -67,6 +67,35 @@ echo ""
 
 [[ $EUID -eq 0 ]] || error "Bitte mit sudo ausführen: sudo bash install.sh"
 
+# ── Schutz vor Lauf in einer grafischen Session ──────────────────────────────
+#
+# Der Installer schaltet später lightdm/labwc ab. Wenn er aus einem
+# Desktop-Terminal (lxterminal in labwc) gestartet wurde, killt das
+# Abschalten den Compositor → das Terminal-Fenster verschwindet → der
+# Shell-Prozess kriegt SIGHUP → Skript stirbt mitten im Step. Resultat
+# beim Kunden: halbinstallierte Kasse, kein Service-Enable, keine .env,
+# kein Reboot-Hinweis. Daher hier abbrechen mit klarer Anleitung.
+#
+# Erkennung: $DISPLAY oder $WAYLAND_DISPLAY ist in der grafischen Session
+# gesetzt (auch via sudo, weil $DISPLAY in der Default-env_keep-Liste steht).
+if [[ -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" ]]; then
+    echo
+    echo -e "${RED}[✗]${NC} Dieses Skript läuft in einer grafischen Session"
+    echo -e "    (DISPLAY=${DISPLAY:-}${WAYLAND_DISPLAY:+/WAYLAND_DISPLAY=${WAYLAND_DISPLAY}})."
+    echo
+    echo "    Der Installer wird Pi-OS-Desktop deaktivieren — wenn er dabei"
+    echo "    aus einem Desktop-Terminal läuft, killt er sich selbst und"
+    echo "    bricht mitten in der Konfiguration ab."
+    echo
+    echo "    Bitte stattdessen auf einer Text-TTY (Ctrl+Alt+F2 → einloggen)"
+    echo "    oder per SSH ausführen:"
+    echo
+    echo "        ssh ${SUDO_USER:-pi}@<pi-ip>"
+    echo "        curl -fsSL https://install.clubfridge.de | sudo bash"
+    echo
+    exit 1
+fi
+
 # ── Logging ──────────────────────────────────────────────────────────────
 
 LOGFILE="/var/log/clubfridge-install.log"
@@ -388,15 +417,19 @@ CMDLINE="/boot/firmware/cmdline.txt"
 
 # Desktop-Manager und User-Compositor wirklich abschalten:
 # - mask überlebt apt-upgrade und manuelles enable
-# - stop beendet die laufende Session sofort (sonst hält labwc DRM-Master
-#   bis zum nächsten Reboot, KMSDRM-Init scheitert dann)
 # - User-Autostart-Dateien (labwc/wayfire/lxsession) werden umbenannt
 #   damit der nächste Login keinen Compositor wieder hochzieht.
+#
+# Wichtig: lightdm/labwc NICHT mit `systemctl stop` jetzt sofort beenden.
+# Wenn der Installer aus einem Desktop-Terminal lief, würde das ihn selbst
+# killen (der Graphical-Session-Schutz am Anfang fängt das schon ab; aber
+# als Defense-in-Depth lieber auch hier nicht killen). Der nötige Reboot
+# am Ende der Installation bringt das System sauber in multi-user.target —
+# bis dahin laufen Compositor und Installer parallel.
 if [[ "${IS_DESKTOP}" == "true" ]]; then
     systemctl mask lightdm.service 2>/dev/null || true
     systemctl mask display-manager.service 2>/dev/null || true
     systemctl set-default multi-user.target 2>/dev/null || true
-    systemctl stop lightdm.service 2>/dev/null || true
 
     USER_HOME="/home/${SERVICE_USER}"
     DISABLED_TS="$(date +%Y%m%d-%H%M%S)"
