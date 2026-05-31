@@ -31,11 +31,20 @@ SERVICE_USER="${SUDO_USER:-${USER:-pi}}"
 # --reconfigure:  Display-/Service-Konfiguration neu anwenden, aber Server-URL,
 #                 Tenant und API-Key beibehalten — gut zum Reparieren einer
 #                 fehlerhaften Installation, ohne die Kasse neu zu provisionieren.
+# --rotate-180 / --no-rotate-180:
+#                 überschreibt die Heuristik zur 180°-Display-Drehung — nützlich
+#                 für headless/scripted Installs (CI, vorgebackene Images), wo
+#                 die interaktive Abfrage übersprungen werden soll.
 RESET=false
 RECONFIGURE=false
+# leer = "unbestimmt → fragen", "true" / "false" = vom Flag oder von der
+# interaktiven Frage gesetzt
+ROTATE_180=""
 for arg in "$@"; do
     [[ "${arg}" == "--reset" ]] && RESET=true
     [[ "${arg}" == "--reconfigure" ]] && RECONFIGURE=true
+    [[ "${arg}" == "--rotate-180" ]] && ROTATE_180=true
+    [[ "${arg}" == "--no-rotate-180" ]] && ROTATE_180=false
 done
 
 # ── Farben ────────────────────────────────────────────────────────────────────
@@ -445,6 +454,12 @@ set_env_var() {
 }
 
 # Konfig pro Pi-Modell + Display
+#
+# TD2 ist ein Sonderfall (270° via dtoverlay, eigener Code-Pfad).
+# Für alles andere ist die Entscheidung im wesentlichen binär: Display
+# physisch um 180° gedreht montiert (TD1 fast immer; Drittanbieter-DSI
+# oft; HDMI selten) → 180°-Rotation. Statt das je nach Modell zu raten,
+# fragen wir den Anwender mit einem heuristischen Default.
 if [[ "${DISPLAY_TYPE}" == "td2" ]]; then
     # TD2 (Pi 4 oder Pi 5): Hardware-Rotation via dtoverlay (Display + Touch zusammen)
     if [[ -f "${BOOT_CONFIG}" ]] && ! grep -q "vc4-kms-dsi-ili9881-7inch" "${BOOT_CONFIG}"; then
@@ -458,38 +473,67 @@ if [[ "${DISPLAY_TYPE}" == "td2" ]]; then
     set_env_var "FULLSCREEN" "true"
     info "Display-Konfig: ${PI_MODEL} + TD2 — dtoverlay rotation=270, Kivy 270°"
 
-elif [[ "${DISPLAY_TYPE}" == "td1" && "${PI_MODEL}" == "pi3" ]]; then
-    # Pi 3 + TD1: nur fbcon=rotate:2 + Kivy software rotation=180
-    if [[ -f "${CMDLINE}" ]] && ! grep -q 'fbcon=rotate' "${CMDLINE}"; then
-        sed -i 's/$/ fbcon=rotate:2/' "${CMDLINE}"
+else
+    # Default für die 180°-Frage anhand der Heuristik:
+    #   TD1 (echtes Pi-Touch-Display 1) oder generisches DSI-Panel → ja
+    #   HDMI / nichts erkannt → nein
+    DEFAULT_ROTATE_180=false
+    if [[ "${DISPLAY_TYPE}" == "td1" ]] || [[ -n "${DSI_MODE}" ]]; then
+        DEFAULT_ROTATE_180=true
     fi
-    set_env_var "DISPLAY_ROTATION" "180"
-    set_env_var "FULLSCREEN" "true"
-    info "Display-Konfig: Pi 3 + TD1 — fbcon=rotate:2, Kivy 180°"
 
-elif [[ "${DISPLAY_TYPE}" == "td1" && "${PI_MODEL}" == "pi4" ]]; then
-    # Pi 4 + TD1: DRM rotiert, fbcon zusätzlich für Console
-    if [[ -f "${CMDLINE}" ]]; then
-        if ! grep -q 'video=DSI-1' "${CMDLINE}"; then
-            sed -i 's/$/ video=DSI-1:800x480@60,rotate=180/' "${CMDLINE}"
+    # Falls weder --rotate-180 noch --no-rotate-180 gesetzt: interaktiv fragen.
+    # Wir lesen von /dev/tty (statt stdin), damit das auch beim
+    # `curl ... | sudo bash`-Aufruf funktioniert.
+    if [[ -z "${ROTATE_180}" ]]; then
+        if [[ -r /dev/tty ]]; then
+            if [[ "${DEFAULT_ROTATE_180}" == "true" ]]; then
+                _prompt="[J/n]"
+            else
+                _prompt="[j/N]"
+            fi
+            echo
+            read -rp "Soll der Bildschirm um 180° gedreht werden? ${_prompt} " _ans </dev/tty || _ans=""
+            case "${_ans,,}" in
+                j|ja|y|yes)  ROTATE_180=true ;;
+                n|nein|no)   ROTATE_180=false ;;
+                *)           ROTATE_180="${DEFAULT_ROTATE_180}" ;;
+            esac
+        else
+            ROTATE_180="${DEFAULT_ROTATE_180}"
+            info "Nicht-interaktiv: 180°-Drehung Default = ${ROTATE_180}"
+            info "(Für scripted Installs: --rotate-180 oder --no-rotate-180 übergeben)"
         fi
-        if ! grep -q 'fbcon=rotate' "${CMDLINE}"; then
+    fi
+
+    if [[ "${ROTATE_180}" == "true" ]]; then
+        # Console rotieren (egal welches Pi-Modell)
+        if [[ -f "${CMDLINE}" ]] && ! grep -q 'fbcon=rotate' "${CMDLINE}"; then
             sed -i 's/$/ fbcon=rotate:2/' "${CMDLINE}"
         fi
+        # Pi 4: zusätzlich DRM-Rotation via video=DSI-1 — auf Pi 4 + Trixie/Bookworm
+        # rotiert der DSI-Treiber sonst nicht automatisch mit fbcon, plus der
+        # Kernel-Touch-Treiber liefert dann ungedreht → INVERT_TOUCH=true nötig.
+        if [[ "${PI_MODEL}" == "pi4" ]]; then
+            if [[ -f "${CMDLINE}" ]] && ! grep -q 'video=DSI-1' "${CMDLINE}"; then
+                # Auflösung aus erkanntem DSI-Mode (Fallback 800x480 für TD1)
+                local_dsi="${DSI_MODE:-800x480}"
+                sed -i "s|\$| video=DSI-1:${local_dsi}@60,rotate=180|" "${CMDLINE}"
+            fi
+            if [[ -f "${BOOT_CONFIG}" ]]; then
+                sed -i 's/auto_initramfs=1/auto_initramfs=0/' "${BOOT_CONFIG}"
+            fi
+            set_env_var "INVERT_TOUCH" "true"
+        fi
+        set_env_var "DISPLAY_ROTATION" "180"
+        set_env_var "FULLSCREEN" "true"
+        info "Display-Konfig: 180°-Drehung aktiv (${PI_MODEL}, ${DISPLAY_TYPE:-unbekannt})"
+    else
+        set_env_var "DISPLAY_ROTATION" "0"
+        set_env_var "FULLSCREEN" "true"
+        set_env_var "INVERT_TOUCH" "false"
+        info "Display-Konfig: keine Drehung (${PI_MODEL}, ${DISPLAY_TYPE:-unbekannt})"
     fi
-    if [[ -f "${BOOT_CONFIG}" ]]; then
-        sed -i 's/auto_initramfs=1/auto_initramfs=0/' "${BOOT_CONFIG}"
-    fi
-    set_env_var "DISPLAY_ROTATION" "180"
-    set_env_var "FULLSCREEN" "true"
-    set_env_var "INVERT_TOUCH" "true"
-    info "Display-Konfig: Pi 4 + TD1 — video=DSI-1:rotate=180, fbcon=rotate:2, Kivy 180°, Touch invertiert"
-
-else
-    # HDMI oder anderes Display: keine Rotation, Kivy fullscreen
-    set_env_var "DISPLAY_ROTATION" "0"
-    set_env_var "FULLSCREEN" "true"
-    info "Display-Konfig: HDMI/Generic — keine Rotation"
 fi
 chown "${SERVICE_USER}:${SERVICE_USER}" "${ENV_FILE}"
 
@@ -625,6 +669,10 @@ echo "  Gerätepfade werden automatisch erkannt und in .env gespeichert."
 echo ""
 echo "  Konfiguration reparieren (Display, Service – Tenant/API-Key bleiben):"
 echo "     curl -fsSL https://install.clubfridge.de | sudo bash -s -- --reconfigure"
+echo ""
+echo "  Display-Drehung explizit setzen (überspringt die interaktive Frage):"
+echo "     ... | sudo bash -s -- --rotate-180        (180° drehen)"
+echo "     ... | sudo bash -s -- --no-rotate-180     (nicht drehen)"
 echo ""
 echo "  Neu einrichten (anderer Tenant oder neue Kasse, .env wird gelöscht):"
 echo "     curl -fsSL https://install.clubfridge.de | sudo bash -s -- --reset"
