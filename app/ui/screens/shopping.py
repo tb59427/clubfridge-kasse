@@ -415,7 +415,11 @@ class ShoppingScreen(Screen):
         product = find_product_by_barcode(barcode)
         if product is None:
             log.warning("Unbekannter Barcode: %s", barcode)
-            self._show_error(f"Unbekannter Barcode: {barcode}")
+            # Modaler Hinweis statt nur kleiner Status-Zeile — der Barcode-
+            # Scanner piept beim Lesen unabhaengig davon ob das Produkt
+            # bekannt ist, daher sieht man sonst nicht ob der Scan was
+            # bewirkt hat.
+            self._show_unknown_barcode_popup(barcode)
             return
 
         # Jugendschutz-Check beim Scan — bevor das Produkt in den Cart kommt
@@ -516,6 +520,68 @@ class ShoppingScreen(Screen):
             content=layout,
             size_hint=(None, None),
             size=(440, 300),
+            auto_dismiss=False,
+        )
+        btn.bind(on_release=popup.dismiss)
+        popup.open()
+
+    def _show_unknown_barcode_popup(self, barcode: str) -> None:
+        """Modaler Hinweis bei unbekanntem Barcode.
+
+        Gleicher visueller Stil wie das 'Karte nicht erkannt'-Popup im
+        IdleScreen, damit der Anwender den Zusammenhang sofort erkennt.
+        Der Barcode-Scanner piept beim Scannen unabhaengig davon, ob das
+        Produkt in der Kasse bekannt ist — ohne diesen Popup koennten
+        Anwender denken, der Scan habe geklappt.
+        """
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.button import Button
+        from kivy.uix.label import Label
+        from kivy.uix.popup import Popup
+
+        layout = BoxLayout(orientation="vertical", padding=24, spacing=14)
+
+        layout.add_widget(Label(
+            text="[b]Produkt nicht erkannt[/b]",
+            markup=True,
+            font_size=28,
+            color=(1.0, 0.42, 0.208, 1),
+            size_hint_y=None,
+            height=44,
+        ))
+        layout.add_widget(Label(
+            text=f"[size=42][b]{barcode}[/b][/size]",
+            markup=True,
+            color=(1, 1, 1, 1),
+            size_hint_y=None,
+            height=72,
+        ))
+        layout.add_widget(Label(
+            text=(
+                "Du hast ein Produkt gescannt, das die Kasse [b]nicht kennt[/b].\n"
+                "Bitte wende dich an deinen Kassen-Admin."
+            ),
+            markup=True,
+            font_size=18,
+            color=(1, 1, 1, 0.9),
+            halign="center",
+            valign="middle",
+            text_size=(620, None),
+        ))
+        btn = Button(
+            text="Schließen",
+            size_hint_y=None,
+            height=56,
+            font_size=18,
+        )
+        layout.add_widget(btn)
+
+        popup = Popup(
+            title="",
+            separator_height=0,
+            content=layout,
+            size_hint=(None, None),
+            size=(700, 380),
             auto_dismiss=False,
         )
         btn.bind(on_release=popup.dismiss)
