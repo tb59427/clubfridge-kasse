@@ -102,6 +102,12 @@ step "System-Pakete werden installiert…"
 
 apt-get update -qq
 
+# Kivy 2.3 hat fuer Python 3.11+ auf aarch64 fertige Wheels, daher kommen
+# Build-Headers fuer SDL2/FFmpeg/GStreamer nicht mehr in die Paketliste —
+# nur Build-Tools (build-essential, python3-dev) plus libssl-dev/libffi-dev
+# fuer Pakete wie cryptography/bcrypt, die im Worst-Case noch kompiliert
+# werden. Die Runtime-Libraries (libsdl2-2.0-0 etc.) kommen automatisch
+# als Wheel-Dependency mit, oder sind auf einem Pi-OS-Image eh schon da.
 apt-get install -y --no-install-recommends \
     git \
     python3 \
@@ -109,32 +115,10 @@ apt-get install -y --no-install-recommends \
     python3-venv \
     python3-dev \
     build-essential \
-    libsdl2-dev \
-    libsdl2-image-dev \
-    libsdl2-mixer-dev \
-    libsdl2-ttf-dev \
-    libportmidi-dev \
-    libswscale-dev \
-    libavformat-dev \
-    libavcodec-dev \
-    libavdevice-dev \
-    zlib1g-dev \
-    libgstreamer1.0-dev \
-    gstreamer1.0-plugins-base \
     libffi-dev \
     libssl-dev \
     libmtdev1 \
     || error "System-Pakete konnten nicht installiert werden"
-
-# OpenGL-Pakete: neuere Debian-Versionen (Bookworm+) nutzen libgl-dev/libgles-dev,
-# ältere (Bullseye) nutzen libgl1-mesa-dev/libgles2-mesa-dev
-if apt-cache show libgl-dev &>/dev/null; then
-    apt-get install -y --no-install-recommends libgl-dev libgles-dev \
-        || error "OpenGL-Pakete (libgl-dev) konnten nicht installiert werden"
-else
-    apt-get install -y --no-install-recommends libgl1-mesa-dev libgles2-mesa-dev \
-        || error "OpenGL-Pakete (libgl1-mesa-dev) konnten nicht installiert werden"
-fi
 
 info "System-Pakete installiert"
 
