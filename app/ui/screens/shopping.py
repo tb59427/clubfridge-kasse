@@ -501,7 +501,9 @@ class ShoppingScreen(Screen):
         )
         log.info("Buchung abgeschlossen: %s × %d Positionen = %s €",
                  self._member.name, len(items), total)
-        self._end_session()
+        # Dankes-Popup anzeigen, dann erst zurueck zum Idle-Screen
+        member_name = self._member.name
+        self._show_thanks_popup(member_name, total)
 
     def _show_error_popup(self, title: str, message: str) -> None:
         """Modaler Hinweis bei blockiertem Kauf."""
@@ -523,6 +525,93 @@ class ShoppingScreen(Screen):
             auto_dismiss=False,
         )
         btn.bind(on_release=popup.dismiss)
+        popup.open()
+
+    def _show_thanks_popup(self, member_name: str, total: Decimal) -> None:
+        """Bedankt sich beim Mitglied nach erfolgreichem Einkauf.
+
+        Bleibt 10 s stehen, dann zurueck zum IdleScreen. Wer schneller
+        weg will, drueckt 'Weiter'. Wichtig: _end_session() wird genau
+        einmal aufgerufen — entweder vom Timer oder vom Knopf, der
+        zweite Aufruf wird per Flag geblockt.
+        """
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.button import Button
+        from kivy.uix.label import Label
+        from kivy.uix.popup import Popup
+
+        # Lock sofort schliessen — Kunde hat die Items schon raus und
+        # bezahlt. Das Popup ist nur noch Anzeige, der Kuehlschrank
+        # muss nicht weiter offen sein.
+        App.get_running_app().lock.close()
+
+        first_name = member_name.split(" ")[0] if member_name else ""
+
+        layout = BoxLayout(orientation="vertical", padding=24, spacing=14)
+        layout.add_widget(Label(
+            text="[b]Vielen Dank!✨[/b]",
+            markup=True,
+            font_size=34,
+            color=(0.2, 0.85, 0.3, 1),
+            size_hint_y=None,
+            height=56,
+        ))
+        if first_name:
+            layout.add_widget(Label(
+                text=f"Bis bald, [b]{first_name}[/b]!",
+                markup=True,
+                font_size=22,
+                color=(1, 1, 1, 0.95),
+                size_hint_y=None,
+                height=36,
+            ))
+        layout.add_widget(Label(
+            text=f"[size=28][b]{total:.2f} €[/b][/size]",
+            markup=True,
+            color=(1, 1, 1, 1),
+            size_hint_y=None,
+            height=54,
+        ))
+        layout.add_widget(Label(
+            text="wurden auf dein Konto gebucht.",
+            font_size=16,
+            color=(0.85, 0.85, 0.85, 1),
+            size_hint_y=None,
+            height=30,
+        ))
+        btn = Button(
+            text="Weiter",
+            size_hint_y=None,
+            height=56,
+            font_size=18,
+        )
+        layout.add_widget(btn)
+
+        popup = Popup(
+            title="",
+            separator_height=0,
+            content=layout,
+            size_hint=(None, None),
+            size=(600, 380),
+            auto_dismiss=False,
+        )
+
+        finished = {"done": False}
+
+        def _finish(*_args) -> None:
+            if finished["done"]:
+                return
+            finished["done"] = True
+            # Reihenfolge: erst Cart/Member leeren und Idle-Screen aktivieren,
+            # dann Popup schliessen. Sonst blitzt der alte Shopping-Screen mit
+            # dem Warenkorb kurz auf.
+            self._member = None
+            self._cart = []
+            App.get_running_app().screen_manager.current = "idle"
+            popup.dismiss()
+
+        btn.bind(on_release=lambda *_a: _finish())
+        Clock.schedule_once(_finish, 10.0)
         popup.open()
 
     def _show_unknown_barcode_popup(self, barcode: str) -> None:
