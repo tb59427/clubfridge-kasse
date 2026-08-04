@@ -164,6 +164,14 @@ class KasseApp(App):
         sm = ScreenManager(transition=NoTransition())
         sm.add_widget(IdleScreen(name="idle"))
         sm.add_widget(ShoppingScreen(name="shopping"))
+        # Admin-Konfigurations-Screens (Zahnrad → admin_menu → Sub-Screens)
+        from app.ui.screens.admin import (
+            AdminDevicesScreen, AdminDisplayScreen, AdminMenuScreen, AdminWifiScreen,
+        )
+        sm.add_widget(AdminMenuScreen(name="admin_menu"))
+        sm.add_widget(AdminDisplayScreen(name="admin_display"))
+        sm.add_widget(AdminDevicesScreen(name="admin_devices"))
+        sm.add_widget(AdminWifiScreen(name="admin_wifi"))
         return _wrap_scaled(sm)
 
     @property

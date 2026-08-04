@@ -36,6 +36,9 @@ class CachedMember(Base):
     is_billing_account = Column(Boolean, nullable=False, default=False)
     billed_to_id = Column(String(36), nullable=True)
     billed_to_name = Column(String(200), nullable=True)
+    # Nur Admins sehen den Zahnrad-Button im Shopping-Screen und kommen
+    # dann in den Konfigurations-Screen (Rotation/Eingabegeraete/WLAN).
+    is_admin = Column(Boolean, nullable=False, default=False)
     synced_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self) -> str:
@@ -284,6 +287,7 @@ def replace_member_cache(members: list[dict]) -> None:
                 is_billing_account=bool(m.get("is_billing_account", False)),
                 billed_to_id=m.get("billed_to_id"),
                 billed_to_name=m.get("billed_to_name"),
+                is_admin=bool(m.get("is_admin", False)),
             ))
 
 

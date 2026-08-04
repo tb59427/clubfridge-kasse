@@ -1,0 +1,17 @@
+# NOPASSWD-Rechte fuer den Kasse-Service-User, damit der Admin-Config-
+# Screen in der Kivy-App System-Aenderungen ohne Passwort-Prompt machen
+# kann. Wird per install.sh nach /etc/sudoers.d/clubfridge-admin
+# deployed (mit chmod 440, per visudo-Syntax-Check).
+#
+# Freigegeben sind ausschliesslich die Kommandos die die Admin-Config
+# tatsaechlich braucht — kein pauschales ALL=ALL.
+#
+# %i / %u in Servicedateien mappen auf den Instanz-User; hier steht
+# fest 'pi' weil install.sh nur diesen User unterstuetzt. Bei einem
+# anderen SERVICE_USER schreibt install.sh die Datei mit dem Namen um.
+
+pi ALL=(root) NOPASSWD: /sbin/reboot
+pi ALL=(root) NOPASSWD: /usr/bin/nmcli
+pi ALL=(root) NOPASSWD: /bin/tee /boot/firmware/cmdline.txt
+pi ALL=(root) NOPASSWD: /bin/tee /boot/cmdline.txt
+pi ALL=(root) NOPASSWD: /bin/tee /opt/clubfridge/kasse/.env

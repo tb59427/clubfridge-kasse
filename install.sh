@@ -557,6 +557,35 @@ info ".bash_profile eingerichtet (Console-Sperre auf TTY1)"
 
 # ── WiFi: Radio aktivieren + Regulatory Domain DE ────────────────────────
 
+step "Admin-Sudoers werden installiert…"
+
+# Erlaubt dem Kasse-Service-User (typisch: pi) die wenigen priviligierten
+# Kommandos die der Admin-Config-Screen in der Kivy-App braucht:
+# reboot, nmcli (WLAN-Setup), Schreiben von cmdline.txt (Rotation) und
+# .env (Geraete-Auswahl). Kein pauschales ALL — jedes erlaubte Kommando
+# ist einzeln in deploy/clubfridge-admin.sudoers aufgefuehrt.
+SUDOERS_SRC="${INSTALL_DIR}/deploy/clubfridge-admin.sudoers"
+SUDOERS_DST="/etc/sudoers.d/clubfridge-admin"
+if [[ -f "${SUDOERS_SRC}" ]]; then
+    # Falls Service-User != pi: die 'pi ALL='-Zeilen umschreiben
+    if [[ "${SERVICE_USER}" != "pi" ]]; then
+        sed "s/^pi ALL=/${SERVICE_USER} ALL=/g" "${SUDOERS_SRC}" > "${SUDOERS_DST}.tmp"
+    else
+        cp "${SUDOERS_SRC}" "${SUDOERS_DST}.tmp"
+    fi
+    chmod 440 "${SUDOERS_DST}.tmp"
+    # visudo -c prueft Syntax; nur bei OK aktivieren
+    if visudo -cf "${SUDOERS_DST}.tmp" &>/dev/null; then
+        mv "${SUDOERS_DST}.tmp" "${SUDOERS_DST}"
+        info "Sudoers-Datei installiert: ${SUDOERS_DST}"
+    else
+        rm -f "${SUDOERS_DST}.tmp"
+        info "Sudoers-Datei uebersprungen (visudo-Syntax-Check fehlgeschlagen)"
+    fi
+else
+    info "deploy/clubfridge-admin.sudoers nicht gefunden — Admin-Config-Screen kann keine System-Aenderungen machen"
+fi
+
 step "WiFi-Konfiguration…"
 
 mkdir -p /etc/default

@@ -129,6 +129,7 @@ class SyncManager:
                 "id": m.id, "name": m.name, "rfid_token": m.rfid_token,
                 "birthday": m.birthday, "is_billing_account": m.is_billing_account,
                 "billed_to_id": m.billed_to_id, "billed_to_name": m.billed_to_name,
+                "is_admin": m.is_admin,
             }
             for m in members
         ])

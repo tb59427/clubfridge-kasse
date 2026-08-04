@@ -128,6 +128,22 @@ Builder.load_string("""
                     size_hint_y: None
                     height: 20
 
+            # Zahnrad — nur sichtbar wenn eingeloggter Nutzer Admin ist.
+            # Fuehrt in den Admin-Config-Screen (Rotation/Eingabegeraete/WLAN).
+            # font_name: DejaVu Sans hat U+2699 (Gear), Kivy-Default Roboto nicht —
+            # sonst wird das Zahnrad als Tofu-Box angezeigt.
+            Button:
+                text: '⚙'
+                font_name: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+                font_size: 28
+                size_hint_x: None
+                width: 52 if root.is_admin else 0
+                opacity: 1 if root.is_admin else 0
+                disabled: not root.is_admin
+                background_color: 0.15, 0.15, 0.15, 1
+                color: 0.85, 0.85, 0.85, 1
+                on_release: app.screen_manager.current = 'admin_menu'
+
             Label:
                 id: status_label
                 text: root.status_text
@@ -278,6 +294,9 @@ class ShoppingScreen(Screen):
     error_text = StringProperty("")
     billing_info = StringProperty("")
     has_billing_choice = BooleanProperty(False)
+    # Nur sichtbar wenn eingeloggtes Mitglied Admin ist — steuert den
+    # Zahnrad-Button im Header, der ins Admin-Config-Menue fuehrt.
+    is_admin = BooleanProperty(False)
 
     status_text = StringProperty("• OFFLINE")
     status_color = [1.0, 0.42, 0.208, 1]
@@ -304,6 +323,7 @@ class ShoppingScreen(Screen):
         self.error_text = ""
         self.total_price = 0.0
         self.cart_empty = True
+        self.is_admin = bool(getattr(member, "is_admin", False))
         self._billing_targets = []
         self._selected_billing_target_id = None
         self.has_billing_choice = False

@@ -44,6 +44,7 @@ class RemoteMember:
     is_billing_account: bool = False
     billed_to_id: str | None = None
     billed_to_name: str | None = None
+    is_admin: bool = False
 
 
 @dataclass
@@ -113,6 +114,7 @@ class ApiClient:
                     is_billing_account=bool(m.get("is_billing_account", False)),
                     billed_to_id=m.get("billed_to_id"),
                     billed_to_name=m.get("billed_to_name"),
+                    is_admin=bool(m.get("is_admin", False)),
                 )
                 for m in r.json()
             ]
