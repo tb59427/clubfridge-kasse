@@ -242,15 +242,26 @@ def mark_bookings_rejected(reasons: dict[str, str]) -> None:
 
 
 def cleanup_synced_bookings() -> None:
-    """Löscht synchronisierte Buchungen die älter als 24 Stunden sind."""
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    """Loescht erfolgreich synchronisierte Buchungen aelter als 30 Tage.
+
+    Rollierendes 30-Tage-Fenster als Wiederherstellungs-Puffer: wenn auf
+    dem Server Buchungen fehlen (Sync-Bug, DB-Rollback, Fehldiagnose),
+    liegen sie hier noch als Referenz. Storage-Kosten sind trivial
+    (~2 KB pro Buchung × 30 Tage × Buchungsvolumen).
+
+    sync_rejected-Buchungen (Server hat sie im Batch verworfen) werden
+    hier NICHT beruecksichtigt — sie bleiben unbefristet erhalten
+    (synced=False, filtert automatisch raus), damit der Vereins-Admin
+    sie jederzeit rekonstruieren kann.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
     with get_session() as db:
         deleted = db.query(PendingBooking).filter(
             PendingBooking.synced == True,  # noqa: E712
             PendingBooking.booked_at < cutoff,
         ).delete(synchronize_session=False)
         if deleted:
-            log.info("Cleanup: %d alte gesyncte Buchungen gelöscht", deleted)
+            log.info("Cleanup: %d Buchung(en) aelter als 30 Tage geloescht", deleted)
 
 
 def replace_member_cache(members: list[dict]) -> None:
