@@ -30,6 +30,7 @@ from app.local_db import (
     get_cached_age_check_config,
     get_cached_lock_config,
     get_pending_bookings,
+    mark_bookings_rejected,
     mark_bookings_synced,
     replace_billing_targets,
     replace_member_cache,
@@ -259,10 +260,34 @@ class SyncManager:
                 entry["billed_to_member_id"] = b.billed_to_member_id
             payload.append(entry)
 
-        if self._api.sync_bookings(payload):
-            mark_bookings_synced([b.id for b in pending])
-            self.last_sync_at = datetime.now(timezone.utc)
-            log.info("%d Buchung(en) synchronisiert", len(pending))
+        ok, rejected_keys = self._api.sync_bookings(payload)
+        if not ok:
+            # Ganzer Batch fehlgeschlagen (HTTP-Fehler, Netzwerk) — nichts anfassen,
+            # naechster Loop probiert alle noch mal.
+            return
+
+        # Rejected-Keys sind idempotency_key (= PendingBooking.id in unserer
+        # aktuellen Zuordnung, siehe payload-Aufbau oben). Diese Buchungen
+        # nicht als synced markieren, sondern als endgueltig verworfen — mit
+        # Grund fuer spaetere Rekonstruktion durch den Vereins-Admin.
+        rejected_reasons: dict[str, str] = {}
+        for b in pending:
+            if b.id in rejected_keys:
+                rejected_reasons[b.id] = "vom Server im Sync-Batch verworfen"
+
+        synced_ids = [b.id for b in pending if b.id not in rejected_keys]
+        if synced_ids:
+            mark_bookings_synced(synced_ids)
+        if rejected_reasons:
+            mark_bookings_rejected(rejected_reasons)
+            log.error(
+                "%d Buchung(en) vom Server verworfen — bleiben lokal mit Grund erhalten",
+                len(rejected_reasons),
+            )
+
+        self.last_sync_at = datetime.now(timezone.utc)
+        if synced_ids:
+            log.info("%d Buchung(en) synchronisiert", len(synced_ids))
 
     # ------------------------------------------------------------------
     # Von der UI aufgerufen

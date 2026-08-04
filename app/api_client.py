@@ -198,13 +198,28 @@ class ApiClient:
     # Buchungen synchronisieren
     # ------------------------------------------------------------------
 
-    def sync_bookings(self, bookings: list[dict[str, Any]]) -> bool:
-        """
-        Überträgt eine Batch-Liste von Buchungen an den Server.
-        Gibt True zurück, wenn der Server 200/201 antwortet.
+    def sync_bookings(
+        self, bookings: list[dict[str, Any]]
+    ) -> tuple[bool, set[str]]:
+        """Ueberträgt eine Batch-Liste von Buchungen an den Server.
+
+        Returns (ok, rejected_idempotency_keys):
+          - ok=True + leere Menge → alle Buchungen serverseitig akzeptiert
+          - ok=True + nicht-leere Menge → Batch technisch OK, aber der Server
+            hat einzelne Buchungen verworfen (z. B. Mitglied inaktiv, kein
+            Zugriff auf Buchungskonto). Rejected-Keys werden vom SyncManager
+            NICHT nochmal geschickt aber lokal als 'permanent verworfen'
+            gekennzeichnet und laut geloggt.
+          - ok=False → Batch komplett fehlgeschlagen (HTTP-Fehler oder
+            Netzwerk). Nichts wird lokal veraendert, naechster Loop retryt.
+
+        Vorher wurde 'ok' allein aus HTTP 200 abgeleitet und alle Buchungen
+        blind als synced markiert — auch wenn der Server im Response-Body
+        gemeldet hat, dass die Haelfte verworfen wurde. Damit gingen Kaeufe
+        stumm verloren.
         """
         if not bookings:
-            return True
+            return True, set()
         try:
             with self._client() as c:
                 r = c.post(
@@ -212,11 +227,35 @@ class ApiClient:
                     json={"bookings": bookings},
                 )
                 r.raise_for_status()
-                log.info("Sync OK: %d Buchungen übertragen", len(bookings))
-                return True
+                body = r.json() if r.content else {}
+                synced_count = int(body.get("synced", 0))
+                failed_count = int(body.get("failed", 0))
+                failures = body.get("failures") or []
+                rejected_keys: set[str] = {
+                    f["idempotency_key"] for f in failures
+                    if isinstance(f, dict) and f.get("idempotency_key")
+                }
+
+                if failed_count == 0:
+                    log.info("Sync OK: %d Buchungen uebertragen", synced_count)
+                else:
+                    # Loudes ERROR-Log damit der Verein die Grunde im Journal sieht
+                    # UND ein Ops-Alarm greift falls jemand die Logs monitored.
+                    log.error(
+                        "Sync teilweise verworfen: %d ok, %d verworfen von %d",
+                        synced_count, failed_count, len(bookings),
+                    )
+                    for f in failures:
+                        if not isinstance(f, dict):
+                            continue
+                        log.error(
+                            "Verworfen von Server: member=%s idem=%s grund=%s",
+                            f.get("member_id"), f.get("idempotency_key"), f.get("reason"),
+                        )
+                return True, rejected_keys
         except httpx.HTTPStatusError as e:
             log.warning("Sync HTTP-Fehler %s: %s", e.response.status_code, e.response.text)
-            return False
+            return False, set()
         except Exception as e:
             log.warning("Sync fehlgeschlagen: %s", e)
-            return False
+            return False, set()

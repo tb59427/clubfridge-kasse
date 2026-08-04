@@ -86,6 +86,13 @@ class PendingBooking(Base):
     booked_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     synced = Column(Boolean, default=False, nullable=False)
     billed_to_member_id = Column(String(36), nullable=True)
+    # Server hat die Buchung im Sync-Batch endgueltig verworfen (Mitglied
+    # inaktiv, Buchungskonto-Access fehlt, o. ae.). Wird NICHT nochmal
+    # geschickt (sonst infinite retry), bleibt aber lokal sichtbar mit
+    # Grund — der Vereins-Admin kann so nachtraeglich rekonstruieren was
+    # verloren ging.
+    sync_rejected = Column(Boolean, default=False, nullable=False)
+    sync_rejected_reason = Column(Text, nullable=True)
 
     @property
     def items(self) -> list[dict]:
@@ -204,7 +211,9 @@ def save_pending_booking(
 
 def get_pending_bookings() -> list[PendingBooking]:
     with get_session() as db:
-        return db.query(PendingBooking).filter_by(synced=False).all()
+        return db.query(PendingBooking).filter_by(
+            synced=False, sync_rejected=False,
+        ).all()
 
 
 def mark_bookings_synced(booking_ids: list[str]) -> None:
@@ -214,6 +223,22 @@ def mark_bookings_synced(booking_ids: list[str]) -> None:
         ).update({"synced": True}, synchronize_session=False)
     # Alte gesyncte Buchungen aufräumen (> 24h)
     cleanup_synced_bookings()
+
+
+def mark_bookings_rejected(reasons: dict[str, str]) -> None:
+    """Markiert Buchungen als endgueltig vom Server verworfen (kein Retry).
+
+    reasons: {booking_id: grund} — booking_id ist der lokale PendingBooking.id
+    (= idempotency_key den wir an den Server schicken).
+    """
+    if not reasons:
+        return
+    with get_session() as db:
+        for bid, reason in reasons.items():
+            db.query(PendingBooking).filter(PendingBooking.id == bid).update(
+                {"sync_rejected": True, "sync_rejected_reason": reason},
+                synchronize_session=False,
+            )
 
 
 def cleanup_synced_bookings() -> None:
