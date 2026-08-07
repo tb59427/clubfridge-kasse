@@ -236,8 +236,12 @@ else
     cat > "${SERVICE_FILE}" <<EOF
 [Unit]
 Description=Clubfridge Kasse
-After=network-online.target graphical-session.target
+After=network-online.target
 Wants=network-online.target
+# StartLimit* MUSS ins [Unit]-Segment — in [Service] wirft systemd ab Trixie
+# eine "Unknown key"-Warnung und ignoriert es.
+StartLimitBurst=3
+StartLimitIntervalSec=60
 
 [Service]
 Type=simple
@@ -250,25 +254,34 @@ WorkingDirectory=${INSTALL_DIR}
 ExecStart=${VENV}/bin/python main.py
 Restart=always
 RestartSec=5
-StartLimitBurst=3
-StartLimitIntervalSec=60
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=clubfridge-kasse
 
 [Install]
-WantedBy=graphical.target
+# multi-user.target: Kasse rendert direkt in KMSDRM, kein grafisches Target
+# noetig. Bei default=multi-user (nach lightdm-mask) waere ein Symlink in
+# graphical.target.wants nutzlos.
+WantedBy=multi-user.target
 EOF
 fi
 
 systemctl daemon-reload
-# Service nur auf Headless aktivieren — Desktop nutzt Autostart
-if [[ "${IS_DESKTOP}" != "true" ]]; then
-    systemctl enable "${SERVICE_NAME}@${SERVICE_USER}"
-    info "Service aktiviert: ${SERVICE_NAME}@${SERVICE_USER}"
-else
-    info "Service-Datei installiert (wird auf Desktop nicht automatisch gestartet)"
+
+# Alte Symlinks aus graphical.target.wants aufraeumen — koennen aus vorherigen
+# Installationen (WantedBy=graphical.target) uebriggeblieben sein. Bei
+# default=multi-user.target werden sie nie ausgefuehrt und wirken wie
+# "Service ist enabled", starten aber nicht → verwirrend fuer die Diagnose.
+rm -f "/etc/systemd/system/graphical.target.wants/${SERVICE_NAME}@${SERVICE_USER}.service" 2>/dev/null || true
+
+# Immer aktivieren — die Kasse laeuft auch auf Desktop-Installs im
+# multi-user-Modus (Installer disabled lightdm weiter unten). Vorheriges
+# IS_DESKTOP-Gate hat auf frischen Trixie-Desktops zu 'disabled' und
+# damit keinem Auto-Start beim Boot gefuehrt.
+if systemctl enable "${SERVICE_NAME}@${SERVICE_USER}" 2>&1 | tee /dev/stderr | grep -q 'Failed\|error'; then
+    error "systemctl enable fehlgeschlagen — Service startet nicht automatisch"
 fi
+info "Service aktiviert: ${SERVICE_NAME}@${SERVICE_USER}"
 
 # ── Automatischer Update-Timer einrichten ─────────────────────────────────────
 
@@ -521,9 +534,12 @@ else
 fi
 chown "${SERVICE_USER}:${SERVICE_USER}" "${ENV_FILE}"
 
-# Service aktivieren
-systemctl enable "${SERVICE_NAME}@${SERVICE_USER}" 2>/dev/null || true
+# Redundanter Enable (Sicherheitsnetz falls die erste Enable-Stelle
+# oben fehlgeschlagen sein sollte). NICHT stumm — Fehler sind hier ein
+# echter Boot-Problem-Indikator (siehe frueher Bug: disabled Service
+# → kein Auto-Start beim Boot).
 systemctl daemon-reload
+systemctl enable "${SERVICE_NAME}@${SERVICE_USER}"
 info "Service aktiviert: ${SERVICE_NAME}@${SERVICE_USER} (KMSDRM)"
 
 # Auto-Login auf TTY1 (für headless / nach Desktop-Disable)

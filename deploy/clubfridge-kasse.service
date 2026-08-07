@@ -1,8 +1,12 @@
 [Unit]
 Description=Clubfridge Kasse
 Documentation=https://github.com/clubfridge-dev/clubfridgeV2
-After=network-online.target graphical-session.target
+After=network-online.target
 Wants=network-online.target
+# StartLimit* MUSS ins [Unit]-Segment — in [Service] wirft systemd ab Trixie
+# eine "Unknown key"-Warnung und ignoriert es.
+StartLimitBurst=3
+StartLimitIntervalSec=60
 
 [Service]
 Type=simple
@@ -18,10 +22,6 @@ ExecStart=/opt/clubfridge/kasse/.venv/bin/python main.py
 
 Restart=always
 RestartSec=5
-# Prozess darf max. 3x innerhalb von 60s neu starten
-# danach wartet systemd länger (StartLimitBurst=3)
-StartLimitBurst=3
-StartLimitIntervalSec=60
 
 StandardOutput=journal
 StandardError=journal
@@ -31,4 +31,8 @@ SyslogIdentifier=clubfridge-kasse
 # und mehrere Protect*-Optionen setzen implizit NoNewPrivileges=true
 
 [Install]
-WantedBy=graphical.target multi-user.target
+# multi-user.target reicht — die Kasse rendert direkt in KMSDRM, kein
+# graphisches Ziel noetig. Wenn der Installer default=multi-user setzt
+# (typisch nach lightdm-mask), landet ein Symlink in graphical.target.wants
+# nutzlos → Service startet nie. Fix fuer den Trixie/Desktop-Bug.
+WantedBy=multi-user.target
