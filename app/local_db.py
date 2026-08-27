@@ -361,6 +361,24 @@ def get_cached_age_check_config() -> dict:
     return {"enabled": False, "limits": {}}
 
 
+def save_currency(currency: str) -> None:
+    """Waehrungscode vom Server (ISO-4217) lokal cachen — fuer die Anzeige
+    in Warenkorb, Danke-Popup und Saldo. Ueberlebt Kasse-Neustart."""
+    code = (currency or "EUR").upper()
+    with get_session() as db:
+        db.query(CachedConfig).filter_by(key="currency").delete()
+        db.add(CachedConfig(key="currency", value=code))
+
+
+def get_cached_currency() -> str:
+    """Zuletzt vom Server gemeldeter Waehrungscode, Default EUR."""
+    with get_session() as db:
+        row = db.query(CachedConfig).filter_by(key="currency").first()
+        if row and row.value:
+            return row.value.upper()
+    return "EUR"
+
+
 # ---------------------------------------------------------------------------
 # Billing-Targets Cache
 # ---------------------------------------------------------------------------

@@ -36,6 +36,7 @@ from app.local_db import (
     replace_member_cache,
     replace_product_cache,
     save_age_check_config,
+    save_currency,
     save_lock_config,
     save_pending_booking,
 )
@@ -176,6 +177,11 @@ class SyncManager:
             enabled=bool(config.get("age_check_enabled", False)),
             limits=config.get("age_limits", {}) or {},
         )
+
+        # Waehrungscode vom Server (ISO-4217) — wird in Warenkorb, Danke-Popup
+        # und Saldo als Suffix angezeigt. Default EUR wenn der Server das
+        # Feld noch nicht liefert (altere Server-Versionen).
+        save_currency(config.get("currency", "EUR"))
 
         # Hot-Swap: Lock-Treiber austauschen wenn sich die Config geändert hat
         new_json = json.dumps(new_lock, sort_keys=True) if new_lock else None

@@ -71,7 +71,7 @@ Builder.load_string("""
         text_size: self.width, None
 
     Label:
-        text: '{:.2f} €'.format(root.unit_price)
+        text: '{:.2f} {}'.format(root.unit_price, root.currency)
         font_size: 18
         color: 0.6, 0.6, 0.6, 1
         size_hint_x: 0.17
@@ -79,7 +79,7 @@ Builder.load_string("""
         text_size: self.width, None
 
     Label:
-        text: '{:.2f} €'.format(root.quantity * root.unit_price)
+        text: '{:.2f} {}'.format(root.quantity * root.unit_price, root.currency)
         font_size: 18
         bold: True
         color: 0.95, 0.95, 0.95, 1
@@ -225,7 +225,7 @@ Builder.load_string("""
                 text_size: self.width, None
 
             Label:
-                text: '{:.2f} €'.format(root.total_price)
+                text: '{:.2f} {}'.format(root.total_price, root.currency)
                 font_size: 24
                 bold: True
                 color: 1.0, 0.42, 0.208, 1
@@ -284,6 +284,9 @@ class CartItemRow(BoxLayout):
     product_name = StringProperty()
     quantity = NumericProperty()
     unit_price = NumericProperty()
+    # ISO-4217-Waehrungscode als Suffix (EUR/CHF/...) — wird vom ShoppingScreen
+    # beim Erzeugen der Row aus dem Tenant-Cache gesetzt.
+    currency = StringProperty("EUR")
 
 
 class ShoppingScreen(Screen):
@@ -297,6 +300,11 @@ class ShoppingScreen(Screen):
     # Nur sichtbar wenn eingeloggtes Mitglied Admin ist — steuert den
     # Zahnrad-Button im Header, der ins Admin-Config-Menue fuehrt.
     is_admin = BooleanProperty(False)
+    # ISO-4217-Waehrungscode (EUR/CHF/USD/...), vom SyncManager via
+    # save_currency() in die lokale Cache-DB geschrieben. Wird beim
+    # start_session gelesen und im KV-Baum ueber '{}'-Formatierung
+    # in Warenkorb, Gesamtsumme und Danke-Popup als Suffix eingesetzt.
+    currency = StringProperty("EUR")
 
     status_text = StringProperty("• OFFLINE")
     status_color = [1.0, 0.42, 0.208, 1]
@@ -322,6 +330,12 @@ class ShoppingScreen(Screen):
         self.balance_text = ""
         self.error_text = ""
         self.total_price = 0.0
+        # Waehrung aus dem lokalen Cache uebernehmen — der SyncManager haelt
+        # den Wert per save_currency() aktuell. Bei jedem Session-Start neu
+        # gelesen, damit ein Operator-Wechsel spaetestens beim naechsten
+        # RFID-Scan sichtbar wird.
+        from app.local_db import get_cached_currency
+        self.currency = get_cached_currency()
         self.cart_empty = True
         self.is_admin = bool(getattr(member, "is_admin", False))
         self._billing_targets = []
@@ -347,7 +361,7 @@ class ShoppingScreen(Screen):
 
     def set_balance(self, balance) -> None:
         """Wird aus dem Hintergrund-Thread via Clock.schedule_once aufgerufen."""
-        self.balance_text = f"Offener Saldo: {balance:.2f} €"
+        self.balance_text = f"Offener Saldo: {balance:.2f} {self.currency}"
 
     def set_billing_targets(self, targets: list[dict]) -> None:
         """Wird aus dem Hintergrund-Thread via Clock.schedule_once aufgerufen."""
@@ -586,7 +600,7 @@ class ShoppingScreen(Screen):
                 height=36,
             ))
         layout.add_widget(Label(
-            text=f"[size=28][b]{total:.2f} €[/b][/size]",
+            text=f"[size=28][b]{total:.2f} {self.currency}[/b][/size]",
             markup=True,
             color=(1, 1, 1, 1),
             size_hint_y=None,
@@ -716,6 +730,7 @@ class ShoppingScreen(Screen):
                 product_name=item.product_name,
                 quantity=item.quantity,
                 unit_price=float(item.unit_price),
+                currency=self.currency,
             )
             box.add_widget(row)
         self.ids.scroll.scroll_y = 1  # immer oben bleiben
