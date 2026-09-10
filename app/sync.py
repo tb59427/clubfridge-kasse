@@ -36,6 +36,7 @@ from app.local_db import (
     replace_member_cache,
     replace_product_cache,
     save_age_check_config,
+    save_contact_email,
     save_currency,
     save_lock_config,
     save_pending_booking,
@@ -182,6 +183,12 @@ class SyncManager:
         # und Saldo als Suffix angezeigt. Default EUR wenn der Server das
         # Feld noch nicht liefert (altere Server-Versionen).
         save_currency(config.get("currency", "EUR"))
+
+        # Tenant-Kontakt-Mail — Unbekannte-Karte-Popup zeigt sie als Support-
+        # Adresse. Wenn Server das Feld nicht liefert (aeltere Version) oder
+        # der Tenant keine hinterlegt hat, bleibt der Cache leer und die
+        # Kasse faellt im Popup auf info@clubfridge.com zurueck.
+        save_contact_email(config.get("contact_email"))
 
         # Hot-Swap: Lock-Treiber austauschen wenn sich die Config geändert hat
         new_json = json.dumps(new_lock, sort_keys=True) if new_lock else None

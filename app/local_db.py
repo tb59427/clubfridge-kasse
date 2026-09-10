@@ -379,6 +379,24 @@ def get_cached_currency() -> str:
     return "EUR"
 
 
+def save_contact_email(email: str | None) -> None:
+    """Support-/Admin-Kontakt-Mail des Tenants lokal cachen — Kasse zeigt sie
+    im Unbekannte-Karte-Popup als Adresse fuer den Foto-Report."""
+    with get_session() as db:
+        db.query(CachedConfig).filter_by(key="contact_email").delete()
+        if email:
+            db.add(CachedConfig(key="contact_email", value=email))
+
+
+def get_cached_contact_email() -> str | None:
+    """Gecachte Tenant-Kontakt-Mail, oder None wenn nicht gesetzt."""
+    with get_session() as db:
+        row = db.query(CachedConfig).filter_by(key="contact_email").first()
+        if row and row.value:
+            return row.value
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Billing-Targets Cache
 # ---------------------------------------------------------------------------

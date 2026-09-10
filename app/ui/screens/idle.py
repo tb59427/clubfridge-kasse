@@ -28,7 +28,7 @@ from kivy.lang import Builder
 from kivy.properties import BooleanProperty, StringProperty
 from kivy.uix.screenmanager import Screen
 
-from app.local_db import find_member_by_rfid
+from app.local_db import find_member_by_rfid, get_cached_contact_email
 
 log = logging.getLogger(__name__)
 
@@ -265,11 +265,15 @@ class IdleScreen(Screen):
     # ------------------------------------------------------------------
 
     def _show_unknown_card_popup(self, token: str) -> None:
-        """Zeigt einen großen Bildschirm mit RFID-UID + Anweisung,
-        Foto an info@clubfridge.com zu schicken. Quick-and-dirty Bug-
-        Report-Pfad für Endanwender ohne IT-Kenntnis: Foto vom Display
-        liefert UID + Kontext (Verein, Kasse, Zeitpunkt) ans Support-
-        Postfach.
+        """Zeigt einen großen Bildschirm mit RFID-UID + Anweisung, ein Foto
+        an den Tenant-Admin zu schicken. Quick-and-dirty Bug-Report-Pfad
+        für Endanwender ohne IT-Kenntnis: Foto vom Display liefert UID +
+        Kontext (Verein, Kasse, Zeitpunkt) an den Verein.
+
+        Die Support-Adresse kommt vom Server (Tenant.contact_email). Wenn
+        der Verein keine hinterlegt hat oder der Server das Feld nicht
+        liefert (aeltere Version), faellt die Kasse auf info@clubfridge.com
+        zurueck, damit der Weg immer irgendwohin fuehrt.
         """
         from kivy.uix.boxlayout import BoxLayout
         from kivy.uix.button import Button
@@ -282,6 +286,7 @@ class IdleScreen(Screen):
         except Exception:
             host = "?"
         tenant = settings.tenant_slug or "?"
+        support_email = get_cached_contact_email() or "info@clubfridge.com"
 
         layout = BoxLayout(orientation="vertical", padding=24, spacing=14)
 
@@ -315,7 +320,7 @@ class IdleScreen(Screen):
         layout.add_widget(Label(
             text=(
                 "Bitte [b]fotografiere diesen Bildschirm[/b] und schicke "
-                "das Bild an [b]info@clubfridge.com[/b].\n"
+                f"das Bild an [b]{support_email}[/b].\n"
                 "Wir ordnen die Karte deinem Mitgliedskonto zu."
             ),
             markup=True,
